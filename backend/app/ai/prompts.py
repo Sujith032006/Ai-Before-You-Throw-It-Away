@@ -46,6 +46,38 @@ CRITICAL RULES:
 5. Concise & Encouraging: Keep responses clear, helpful, and under 3-4 sentences.
 """
 
+SYSTEM_PROMPT_VISION_CLASSIFIER = """You are a 100% precise Computer Vision Object & Material Classifier for household upcycling items.
+
+Analyze the image provided and identify the single main household item visible.
+
+Return ONLY a valid JSON object matching this exact schema:
+{
+  "object": "remote_control",
+  "display_name": "Remote Control",
+  "material": "Plastic & Circuit Board",
+  "category": "Electronic Waste",
+  "confidence": 0.98,
+  "description": "Identified item from visual features"
+}
+
+Allowed object keys (choose closest match):
+- remote_control (for remote control, TV remote, AC remote)
+- cell_phone (for smartphones, tablets, mobile devices)
+- e_waste (for keyboards, mouse, routers, electronic devices)
+- plastic_bottle (for plastic water/soda bottles, plastic jugs)
+- tin_can (for metal food cans, aluminum beverage cans)
+- glass_jar (for glass food jars, glass bottles, glass vases)
+- cardboard_box (for delivery boxes, cardboard packaging)
+- old_tshirt (for T-shirts, cloth, towels, textiles)
+- jeans (for denim jeans, denim fabric)
+- book (for old books, notebooks, paper blocks)
+- clock (for wall clocks, timers, hardware)
+- plastic_container (for tupperware, plastic food containers)
+- egg_carton (for paper pulp egg trays)
+- shoe_box (for footwear cardboard boxes)
+- general_household_item (for unlisted household items)
+"""
+
 def build_guide_prompt(project: Dict[str, Any], req: PersonalizedGuideRequest) -> str:
     prompt_data = {
         "scanned_object": req.object_name,

@@ -1,3 +1,4 @@
+import asyncio
 from PIL import Image, ImageOps
 import logging
 from app.utils.config import AI_MODE, YOLO_CONFIDENCE_THRESHOLD
@@ -17,7 +18,7 @@ CLASS_MAPPINGS = {
     "mouse": ("e_waste", "Computer Mouse", "Plastic & Wire", "Electronic Waste"),
     "keyboard": ("e_waste", "Computer Keyboard", "Plastic & Electronics", "Electronic Waste"),
 
-    # Household Containers & Containers
+    # Household Containers & Vessels
     "bottle": ("plastic_bottle", "Plastic Bottle", "Plastic (PET)", "Household Container"),
     "cup": ("tin_can", "Tin Can / Beverage Cup", "Metal (Aluminum/Steel)", "Kitchen Container"),
     "bowl": ("tin_can", "Food Bowl / Container", "Metal / Ceramic", "Kitchen Container"),
@@ -110,43 +111,53 @@ def process_detection(image: Image.Image) -> ScanResponse:
     # 3. Filter detections >= threshold
     valid_detections = [d for d in all_detections if d.confidence >= YOLO_CONFIDENCE_THRESHOLD]
 
-    if not valid_detections:
-        if all_detections:
-            valid_detections = [all_detections[0]]
-        else:
-            # Smart Heuristic Visual Feature Fallback
-            heuristic_item = analyze_image_aspect_ratio(image)
-            return ScanResponse(
-                success=True,
-                primary_detection=heuristic_item,
-                detections=[heuristic_item],
-                message=f"Identified {heuristic_item.display_name} with {int(heuristic_item.confidence*100)}% confidence.",
-                mode="real"
-            )
-
-    # 4. Map detected object class to household upcycling object category
-    mapped_detections = []
-    for det in valid_detections:
-        raw_obj = det.object.lower().strip()
+    # If YOLO has high confidence (>0.65), use YOLO detection directly
+    if valid_detections and valid_detections[0].confidence >= 0.65:
+        primary_det = valid_detections[0]
+        raw_obj = primary_det.object.lower().strip()
         if raw_obj in CLASS_MAPPINGS:
             obj_key, display_name, material, category = CLASS_MAPPINGS[raw_obj]
-            det.object = obj_key
-            det.display_name = display_name
-            det.material = material
-            det.category = category
-        else:
-            det.display_name = raw_obj.replace("_", " ").title()
-            det.material = "Plastic / Metal"
-            det.category = "Household Object"
-        mapped_detections.append(det)
+            primary_det.object = obj_key
+            primary_det.display_name = display_name
+            primary_det.material = material
+            primary_det.category = category
+        return ScanResponse(
+            success=True,
+            primary_detection=primary_det,
+            detections=valid_detections,
+            message=f"Identified {primary_det.display_name} with {int(primary_det.confidence*100)}% confidence.",
+            mode="real"
+        )
 
-    primary = mapped_detections[0]
-    conf_pct = int(primary.confidence * 100) if primary.confidence else 90
+    # 4. Multimodal Vision AI Fallback (Gemini Vision / OpenAI Vision) if YOLO is uncertain
+    try:
+        from app.ai.vision_detector import analyze_image_with_vision_ai
+        # Run async call in current loop
+        loop = None
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        vision_item = loop.run_until_complete(analyze_image_with_vision_ai(image)) if loop and not loop.is_running() else None
+        if vision_item:
+            return ScanResponse(
+                success=True,
+                primary_detection=vision_item,
+                detections=[vision_item],
+                message=f"Identified {vision_item.display_name} using Multimodal Vision AI with {int(vision_item.confidence*100)}% confidence.",
+                mode="real"
+            )
+    except Exception as vision_err:
+        logger.warning(f"[Detection Service] Vision AI fallback failed: {str(vision_err)}")
 
+    # 5. Smart Heuristic Visual Feature Fallback
+    heuristic_item = analyze_image_aspect_ratio(image)
     return ScanResponse(
         success=True,
-        primary_detection=primary,
-        detections=mapped_detections,
-        message=f"Identified {primary.display_name} with {conf_pct}% confidence.",
+        primary_detection=heuristic_item,
+        detections=[heuristic_item],
+        message=f"Identified {heuristic_item.display_name} with {int(heuristic_item.confidence*100)}% confidence.",
         mode="real"
     )
