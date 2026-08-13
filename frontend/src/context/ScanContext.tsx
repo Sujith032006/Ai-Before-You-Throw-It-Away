@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import type { DetectionResult } from '../types/detection';
 import type { RecommendationResponse, RecommendationRequest } from '../types/recommendation';
 import type { ActivityItem } from '../types/dashboard';
+import { deleteScanHistoryItem, clearAllUserHistory } from '../services/dashboardService';
 
 interface ScanContextType {
   selectedImage: string | null;
@@ -15,6 +16,8 @@ interface ScanContextType {
   activityList: ActivityItem[];
   recordScanActivity: (objectName: string, projectId: string, projectName: string, score: number) => void;
   recordProjectCompletion: (projectId: string) => void;
+  deleteScanItem: (scanId: string) => Promise<void>;
+  clearAllScans: () => Promise<void>;
   resetScan: () => void;
 }
 
@@ -79,6 +82,21 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const deleteScanItem = async (scanId: string) => {
+    setActivityList(prev => prev.filter(item => item.scan_id !== scanId && item.project_id !== scanId));
+    try {
+      await deleteScanHistoryItem(scanId);
+    } catch {}
+  };
+
+  const clearAllScans = async () => {
+    setActivityList([]);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      await clearAllUserHistory();
+    } catch {}
+  };
+
   const resetScan = () => {
     setSelectedImage(null);
     setDetectionResult(null);
@@ -100,6 +118,8 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         activityList,
         recordScanActivity,
         recordProjectCompletion,
+        deleteScanItem,
+        clearAllScans,
         resetScan,
       }}
     >

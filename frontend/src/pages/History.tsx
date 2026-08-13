@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, CheckCircle2, ChevronRight, History as HistoryIcon, Search } from 'lucide-react';
-import { fetchUserHistory } from '../services/dashboardService';
+import { ArrowLeft, Clock, CheckCircle2, ChevronRight, History as HistoryIcon, Search, Trash2 } from 'lucide-react';
+import { fetchUserHistory, deleteScanHistoryItem, clearAllUserHistory } from '../services/dashboardService';
+import { useScan } from '../context/ScanContext';
 import type { HistoryItem } from '../types/dashboard';
 
 export default function History() {
   const navigate = useNavigate();
+  const { deleteScanItem, clearAllScans } = useScan();
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'completed' | 'in_progress'>('all');
   const [loading, setLoading] = useState(true);
@@ -24,6 +26,23 @@ export default function History() {
     }
     loadData();
   }, []);
+
+  const handleDeleteItem = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (window.confirm("Are you sure you want to delete this scan from your history?")) {
+      setHistoryItems(prev => prev.filter(item => item.id !== id));
+      await deleteScanItem(id);
+      await deleteScanHistoryItem(id);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (window.confirm("Are you sure you want to delete ALL scan history? This action cannot be undone.")) {
+      setHistoryItems([]);
+      await clearAllScans();
+      await clearAllUserHistory();
+    }
+  };
 
   const filteredList = historyItems.filter(item => {
     if (filter === 'completed') return item.status === 'completed';
@@ -46,14 +65,27 @@ export default function History() {
             >
               <ArrowLeft size={20} />
             </button>
-            <span className="text-xs font-extrabold uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3.5 py-1 rounded-full flex items-center gap-1.5">
-              <HistoryIcon size={14} /> Saved History & Logs
-            </span>
+            
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-extrabold uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3.5 py-1.5 rounded-full flex items-center gap-1.5">
+                <HistoryIcon size={14} /> Saved History & Logs
+              </span>
+
+              {historyItems.length > 0 && (
+                <button
+                  onClick={handleClearAll}
+                  className="text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1.5"
+                >
+                  <Trash2 size={14} />
+                  Clear All History
+                </button>
+              )}
+            </div>
           </div>
 
           <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-2">📜 Activity History & Upcycling Logs</h1>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-xl font-normal">
-            Review previous computer vision item scans, generated AI personalized guides, and completed projects.
+            Review previous computer vision item scans, generated AI personalized guides, and delete unwanted scans anytime.
           </p>
         </div>
 
@@ -101,7 +133,7 @@ export default function History() {
             >
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-2xl font-bold flex-shrink-0 group-hover:scale-105 transition-transform">
-                  {item.object_name.includes('Bottle') ? '🧴' : item.object_name.includes('Can') ? '🥫' : '👕'}
+                  {item.object_name.includes('Bottle') ? '🧴' : item.object_name.includes('Can') ? '🥫' : item.object_name.includes('Remote') || item.object_name.includes('Electronic') ? '📱' : '📦'}
                 </div>
 
                 <div>
@@ -120,7 +152,7 @@ export default function History() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 {item.status === 'completed' ? (
                   <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/30">
                     <CheckCircle2 size={14} /> Completed
@@ -130,6 +162,15 @@ export default function History() {
                     <Clock size={14} /> Active
                   </span>
                 )}
+
+                {/* Delete Button */}
+                <button
+                  onClick={(e) => handleDeleteItem(e, item.id)}
+                  title="Delete scan item"
+                  className="p-2.5 rounded-2xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 transition-colors"
+                >
+                  <Trash2 size={16} />
+                </button>
 
                 <div className="w-9 h-9 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-emerald-500 group-hover:text-slate-950 transition-colors">
                   <ChevronRight size={18} />

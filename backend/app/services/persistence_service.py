@@ -323,3 +323,60 @@ def get_user_history(user_id: str = DEMO_USER_ID) -> List[Dict[str, Any]]:
         return []
     finally:
         db.close()
+
+def delete_user_scan(scan_id: str, user_id: str = DEMO_USER_ID) -> bool:
+    """Deletes a specific scan record and its associated detections/recommendations/projects."""
+    if SessionLocal is None:
+        return True
+    db: Session = SessionLocal()
+    try:
+        scan = db.query(Scan).filter(Scan.id == scan_id).first()
+        if scan:
+            db.query(Detection).filter(Detection.scan_id == scan_id).delete()
+            db.query(Recommendation).filter(Recommendation.scan_id == scan_id).delete()
+            db.query(SelectedProject).filter(SelectedProject.scan_id == scan_id).delete()
+            db.delete(scan)
+            db.commit()
+            logger.info(f"[Persistence] Successfully deleted Scan {scan_id}.")
+            return True
+        
+        selected = db.query(SelectedProject).filter(
+            SelectedProject.user_id == user_id,
+            (SelectedProject.project_id == scan_id) | (SelectedProject.id == scan_id)
+        ).first()
+        if selected:
+            db.delete(selected)
+            db.commit()
+            return True
+
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Persistence] Error deleting scan {scan_id}: {str(e)}")
+        return False
+    finally:
+        db.close()
+
+def delete_all_user_history(user_id: str = DEMO_USER_ID) -> bool:
+    """Deletes all scan history and selected projects for a user."""
+    if SessionLocal is None:
+        return True
+    db: Session = SessionLocal()
+    try:
+        scans = db.query(Scan).filter(Scan.user_id == user_id).all()
+        for s in scans:
+            db.query(Detection).filter(Detection.scan_id == s.id).delete()
+            db.query(Recommendation).filter(Recommendation.scan_id == s.id).delete()
+            db.query(SelectedProject).filter(SelectedProject.scan_id == s.id).delete()
+            db.delete(s)
+        db.query(SelectedProject).filter(SelectedProject.user_id == user_id).delete()
+        db.commit()
+        logger.info(f"[Persistence] Deleted all history for user {user_id}.")
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Persistence] Error clearing history: {str(e)}")
+        return False
+    finally:
+        db.close()
+

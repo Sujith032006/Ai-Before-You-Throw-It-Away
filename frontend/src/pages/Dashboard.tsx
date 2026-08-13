@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   Recycle, CheckCircle2, Camera, ArrowRight, Star, 
-  Sparkles, Clock, Leaf, ShieldCheck, ChevronRight, Award, Search
+  Sparkles, Clock, Leaf, ShieldCheck, ChevronRight, Award, Search, Trash2
 } from 'lucide-react';
 import { useScan } from '../context/ScanContext';
-import { fetchDashboardStats } from '../services/dashboardService';
+import { fetchDashboardStats, deleteScanHistoryItem } from '../services/dashboardService';
 import type { ActivityItem } from '../types/dashboard';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { activityList } = useScan();
+  const { activityList, deleteScanItem } = useScan();
   const [statsData, setStatsData] = useState<{
     total_scans: number;
     total_projects: number;
@@ -22,6 +22,17 @@ export default function Dashboard() {
     completed_projects: 1,
     recent_activity: []
   });
+
+  const handleDeleteActivity = async (e: React.MouseEvent, item: ActivityItem) => {
+    e.stopPropagation();
+    const idToDelete = item.scan_id || item.project_id;
+    setStatsData(prev => ({
+      ...prev,
+      recent_activity: prev.recent_activity.filter(a => a.scan_id !== idToDelete && a.project_id !== idToDelete)
+    }));
+    await deleteScanItem(idToDelete);
+    await deleteScanHistoryItem(idToDelete);
+  };
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'completed' | 'active'>('all');
@@ -364,7 +375,7 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-2">
                       {item.status === 'completed' ? (
                         <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
                           <CheckCircle2 size={10} /> Done
@@ -374,6 +385,14 @@ export default function Dashboard() {
                           <Clock size={10} /> Active
                         </span>
                       )}
+
+                      <button
+                        onClick={(e) => handleDeleteActivity(e, item)}
+                        title="Delete scan"
+                        className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 transition-colors"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
                   </div>
                 ))}

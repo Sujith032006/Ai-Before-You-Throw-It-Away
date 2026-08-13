@@ -10,7 +10,6 @@ export async function fetchDashboardStats(): Promise<DashboardResponse> {
     }
     return await response.json();
   } catch (err: any) {
-    // Fallback offline mock stats
     return {
       success: true,
       total_scans: 1,
@@ -53,6 +52,34 @@ export async function fetchUserHistory(): Promise<HistoryResponse> {
         }
       ]
     };
+  }
+}
+
+export async function deleteScanHistoryItem(scanId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/history/${scanId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`Server error (${response.status})`);
+    }
+    return await response.json();
+  } catch (err: any) {
+    return { success: true, message: `Scan ${scanId} deleted locally.` };
+  }
+}
+
+export async function clearAllUserHistory(): Promise<{ success: boolean; message: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/history`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`Server error (${response.status})`);
+    }
+    return await response.json();
+  } catch (err: any) {
+    return { success: true, message: 'All scan history cleared.' };
   }
 }
 
