@@ -1,0 +1,41 @@
+# ===== FRONTEND =====
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# ===== BACKEND =====
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/*.pyc
+backend/sql_app.db
+
+# ===== AI MODELS (too large for git) =====
+backend/*.pt
+backend/models/*.pt
+backend/data/
+
+# ===== ENVIRONMENT / SECRETS =====
+.env
+frontend/.env
+backend/.env
+*.env.local
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ===== LOGS =====
+*.log
+logs/
