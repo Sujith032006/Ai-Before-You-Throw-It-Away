@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Clock, CheckCircle2, ChevronRight, History as HistoryIcon, Search, Trash2 } from 'lucide-react';
 import { fetchUserHistory, deleteScanHistoryItem, clearAllUserHistory } from '../services/dashboardService';
 import { useScan } from '../context/ScanContext';
-import type { HistoryItem } from '../types/dashboard';
+import type { HistoryItem, ActivityItem } from '../types/dashboard';
 
 export default function History() {
   const navigate = useNavigate();
-  const { deleteScanItem, clearAllScans } = useScan();
+  const { activityList, deleteScanItem, clearAllScans } = useScan();
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'completed' | 'in_progress'>('all');
   const [loading, setLoading] = useState(true);
@@ -17,15 +17,40 @@ export default function History() {
       setLoading(true);
       try {
         const res = await fetchUserHistory();
-        setHistoryItems(res.history || []);
+        const apiHistory = res.history || [];
+        const merged: HistoryItem[] = activityList.map((a: ActivityItem) => ({
+          id: a.scan_id || a.project_id,
+          object_name: a.object_name,
+          date: a.date,
+          recommended_project: a.project_name,
+          project_id: a.project_id,
+          match_score: a.match_score,
+          status: a.status
+        }));
+
+        apiHistory.forEach((item: HistoryItem) => {
+          if (!merged.some((m: HistoryItem) => m.id === item.id || m.project_id === item.project_id)) {
+            merged.push(item);
+          }
+        });
+
+        setHistoryItems(merged);
       } catch {
-        // Fallback in service
+        setHistoryItems(activityList.map((a: ActivityItem) => ({
+          id: a.scan_id || a.project_id,
+          object_name: a.object_name,
+          date: a.date,
+          recommended_project: a.project_name,
+          project_id: a.project_id,
+          match_score: a.match_score,
+          status: a.status
+        })));
       } finally {
         setLoading(false);
       }
     }
     loadData();
-  }, []);
+  }, [activityList]);
 
   const handleDeleteItem = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();

@@ -26,10 +26,15 @@ export default function Dashboard() {
   const handleDeleteActivity = async (e: React.MouseEvent, item: ActivityItem) => {
     e.stopPropagation();
     const idToDelete = item.scan_id || item.project_id;
-    setStatsData(prev => ({
-      ...prev,
-      recent_activity: prev.recent_activity.filter(a => a.scan_id !== idToDelete && a.project_id !== idToDelete)
-    }));
+    setStatsData(prev => {
+      const updatedList = prev.recent_activity.filter(a => a.scan_id !== idToDelete && a.project_id !== idToDelete);
+      return {
+        total_scans: updatedList.length,
+        total_projects: updatedList.length,
+        completed_projects: updatedList.filter(c => c.status === 'completed').length,
+        recent_activity: updatedList
+      };
+    });
     await deleteScanItem(idToDelete);
     await deleteScanHistoryItem(idToDelete);
   };
