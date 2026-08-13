@@ -79,8 +79,8 @@ export async function analyzeImageWithBackend(imageInput: string | File): Promis
       displayName: primary.display_name,
       confidence: primary.confidence,
       confidenceText: `${Math.round(primary.confidence * 100)}%`,
-      material: 'Detected Item', // Real material mapping will be enhanced in later stage
-      category: 'Scanned Object',
+      material: (primary as any).material || 'Plastic / Metal',
+      category: (primary as any).category || 'Household Object',
       image: typeof imageInput === 'string' ? imageInput : URL.createObjectURL(imageInput),
     };
   } catch (err: any) {

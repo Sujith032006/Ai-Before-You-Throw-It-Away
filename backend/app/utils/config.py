@@ -6,9 +6,9 @@ load_dotenv()
 FRONTEND_URLS = [
     url.strip() for url in os.getenv("FRONTEND_URL", "http://localhost:5173,http://localhost:5174").split(",")
 ]
-AI_MODE = os.getenv("AI_MODE", "mock").lower()
+AI_MODE = os.getenv("AI_MODE", "real").lower()
 YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo11n.pt")
-YOLO_CONFIDENCE_THRESHOLD = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.25"))
+YOLO_CONFIDENCE_THRESHOLD = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.20"))
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "5"))
 MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 

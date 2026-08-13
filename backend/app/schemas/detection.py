@@ -11,6 +11,8 @@ class DetectionItem(BaseModel):
     object: str
     display_name: str
     confidence: float
+    material: Optional[str] = "Plastic / Metal"
+    category: Optional[str] = "Household Item"
     bounding_box: Optional[BoundingBox] = None
 
 class ScanResponse(BaseModel):
