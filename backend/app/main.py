@@ -16,10 +16,16 @@ def on_startup():
     init_db()
 
 # Configure CORS
+origins = list(set(FRONTEND_URLS + [
+    "https://ai-before-you-throw-it-away.netlify.app",
+    "http://localhost:5173",
+    "http://localhost:5174"
+]))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=FRONTEND_URLS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
