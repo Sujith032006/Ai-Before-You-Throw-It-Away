@@ -208,7 +208,7 @@ def get_dashboard_statistics(user_id: str = DEMO_USER_ID) -> Dict[str, Any]:
             SelectedProject.status == "completed"
         ).count()
 
-        # Build recent activity feed
+        # Build recent activity feed from Scans
         scans = db.query(Scan).filter(Scan.user_id == user_id).order_by(Scan.created_at.desc()).limit(10).all()
         recent_activity = []
 
@@ -232,10 +232,29 @@ def get_dashboard_statistics(user_id: str = DEMO_USER_ID) -> Dict[str, Any]:
                 "date": s.created_at.strftime("%d %b %Y")
             })
 
+        # Include direct SelectedProject entries if no scan record exists
+        if not recent_activity:
+            selected_list = db.query(SelectedProject).filter(SelectedProject.user_id == user_id).order_by(SelectedProject.selected_at.desc()).limit(10).all()
+            for sel in selected_list:
+                recent_activity.append({
+                    "scan_id": sel.id,
+                    "object_name": "Scanned Object",
+                    "project_name": sel.project_id.replace("-", " ").title(),
+                    "project_id": sel.project_id,
+                    "match_score": 95,
+                    "status": sel.status,
+                    "date": sel.selected_at.strftime("%d %b %Y")
+                })
+
+        computed_completed = db.query(SelectedProject).filter(
+            SelectedProject.user_id == user_id,
+            SelectedProject.status == "completed"
+        ).count()
+
         return {
-            "total_scans": total_scans,
-            "total_projects": total_projects,
-            "completed_projects": completed_projects,
+            "total_scans": max(len(recent_activity), total_scans),
+            "total_projects": max(len(recent_activity), total_projects),
+            "completed_projects": computed_completed,
             "recent_activity": recent_activity
         }
     except Exception as e:
@@ -293,25 +312,30 @@ def delete_user_scan(scan_id: str, user_id: str = DEMO_USER_ID) -> bool:
         return True
     db: Session = SessionLocal()
     try:
+        # Delete matching Scan records
         scan = db.query(Scan).filter(Scan.id == scan_id).first()
         if scan:
             db.query(Detection).filter(Detection.scan_id == scan_id).delete()
             db.query(Recommendation).filter(Recommendation.scan_id == scan_id).delete()
             db.query(SelectedProject).filter(SelectedProject.scan_id == scan_id).delete()
             db.delete(scan)
-            db.commit()
-            logger.info(f"[Persistence] Successfully deleted Scan {scan_id}.")
-            return True
-        
-        selected = db.query(SelectedProject).filter(
-            SelectedProject.user_id == user_id,
-            (SelectedProject.project_id == scan_id) | (SelectedProject.id == scan_id)
-        ).first()
-        if selected:
-            db.delete(selected)
-            db.commit()
-            return True
 
+        # Delete matching SelectedProject records
+        selected_projects = db.query(SelectedProject).filter(
+            SelectedProject.user_id == user_id,
+            (SelectedProject.project_id == scan_id) | (SelectedProject.id == scan_id) | (SelectedProject.scan_id == scan_id)
+        ).all()
+        for sel in selected_projects:
+            db.query(ProjectCompletion).filter(ProjectCompletion.selected_project_id == sel.id).delete()
+            db.delete(sel)
+
+        db.query(ProjectCompletion).filter(
+            ProjectCompletion.user_id == user_id,
+            ProjectCompletion.project_id == scan_id
+        ).delete()
+
+        db.commit()
+        logger.info(f"[Persistence] Successfully deleted Scan / Project {scan_id}.")
         return True
     except Exception as e:
         db.rollback()
@@ -321,7 +345,7 @@ def delete_user_scan(scan_id: str, user_id: str = DEMO_USER_ID) -> bool:
         db.close()
 
 def delete_all_user_history(user_id: str = DEMO_USER_ID) -> bool:
-    """Deletes all scan history and selected projects for a user."""
+    """Deletes all scan history, selected projects, and completions for a user."""
     if SessionLocal is None:
         return True
     db: Session = SessionLocal()
@@ -332,6 +356,7 @@ def delete_all_user_history(user_id: str = DEMO_USER_ID) -> bool:
             db.query(Recommendation).filter(Recommendation.scan_id == s.id).delete()
             db.query(SelectedProject).filter(SelectedProject.scan_id == s.id).delete()
             db.delete(s)
+        db.query(ProjectCompletion).filter(ProjectCompletion.user_id == user_id).delete()
         db.query(SelectedProject).filter(SelectedProject.user_id == user_id).delete()
         db.commit()
         logger.info(f"[Persistence] Deleted all history for user {user_id}.")

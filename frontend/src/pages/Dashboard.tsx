@@ -169,7 +169,7 @@ export default function Dashboard() {
                     <Camera size={22} />
                   </div>
                   <span className="text-3xl sm:text-4xl font-black text-white leading-none">
-                    {statsData.total_scans}
+                    {statsData.recent_activity.length}
                   </span>
                   <span className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mt-2">
                     Items Scanned
@@ -182,7 +182,7 @@ export default function Dashboard() {
                     <Recycle size={22} />
                   </div>
                   <span className="text-3xl sm:text-4xl font-black text-white leading-none">
-                    {statsData.total_projects}
+                    {statsData.recent_activity.length}
                   </span>
                   <span className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mt-2">
                     Projects Created
@@ -195,7 +195,7 @@ export default function Dashboard() {
                     <CheckCircle2 size={22} />
                   </div>
                   <span className="text-3xl sm:text-4xl font-black text-emerald-400 leading-none">
-                    {statsData.completed_projects}
+                    {statsData.recent_activity.filter(a => a.status === 'completed').length}
                   </span>
                   <span className="text-[11px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mt-2">
                     Completed
@@ -226,7 +226,7 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800/80">
                 <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 text-center">
                   <span className="text-2xl sm:text-3xl font-black text-emerald-400 block leading-tight">
-                    ~{(statsData.completed_projects * 0.45).toFixed(1)} kg
+                    ~{(statsData.recent_activity.filter(a => a.status === 'completed').length * 0.45).toFixed(1)} kg
                   </span>
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1 block">
                     Waste Diverted From Landfill
@@ -235,7 +235,7 @@ export default function Dashboard() {
 
                 <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 text-center">
                   <span className="text-2xl sm:text-3xl font-black text-teal-300 block leading-tight">
-                    ~{(statsData.completed_projects * 0.9).toFixed(1)} kg
+                    ~{(statsData.recent_activity.filter(a => a.status === 'completed').length * 0.9).toFixed(1)} kg
                   </span>
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1 block">
                     Estimated CO₂ Offset
