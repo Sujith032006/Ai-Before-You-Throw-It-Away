@@ -14,6 +14,7 @@ interface ScanContextType {
   lastPreferences: RecommendationRequest | null;
   setLastPreferences: (prefs: RecommendationRequest | null) => void;
   activityList: ActivityItem[];
+  deletedIds: string[];
   recordScanActivity: (objectName: string, projectId: string, projectName: string, score: number) => void;
   recordProjectCompletion: (projectId: string) => void;
   deleteScanItem: (scanId: string) => Promise<void>;
@@ -24,6 +25,7 @@ interface ScanContextType {
 const ScanContext = createContext<ScanContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'byt_user_activities';
+const DELETED_KEY = 'byt_deleted_ids';
 
 export function ScanProvider({ children }: { children: ReactNode }) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -31,10 +33,23 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [recommendations, setRecommendations] = useState<RecommendationResponse | null>(null);
   const [lastPreferences, setLastPreferences] = useState<RecommendationRequest | null>(null);
 
+  const [deletedIds, setDeletedIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(DELETED_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
+
   const [activityList, setActivityList] = useState<ActivityItem[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved !== null) return JSON.parse(saved);
+      const del = localStorage.getItem(DELETED_KEY);
+      const delArray: string[] = del ? JSON.parse(del) : [];
+      if (saved !== null) {
+        const parsed: ActivityItem[] = JSON.parse(saved);
+        return parsed.filter(item => !(item.scan_id && delArray.includes(item.scan_id)) && !(item.project_id && delArray.includes(item.project_id)));
+      }
     } catch {}
     return [];
   });
@@ -44,6 +59,12 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(activityList));
     } catch {}
   }, [activityList]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DELETED_KEY, JSON.stringify(deletedIds));
+    } catch {}
+  }, [deletedIds]);
 
   const recordScanActivity = (objectName: string, projectId: string, projectName: string, score: number) => {
     const today = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -73,7 +94,12 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteScanItem = async (scanId: string) => {
-    setActivityList(prev => prev.filter(item => item.scan_id !== scanId && item.project_id !== scanId));
+    setDeletedIds(prev => [...new Set([...prev, scanId])]);
+    setActivityList(prev => {
+      const updated = prev.filter(item => item.scan_id !== scanId && item.project_id !== scanId);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      return updated;
+    });
     try {
       await deleteScanHistoryItem(scanId);
     } catch {}
@@ -81,8 +107,10 @@ export function ScanProvider({ children }: { children: ReactNode }) {
 
   const clearAllScans = async () => {
     setActivityList([]);
+    setDeletedIds([]);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      localStorage.setItem(DELETED_KEY, JSON.stringify([]));
       await clearAllUserHistory();
     } catch {}
   };
@@ -106,6 +134,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         lastPreferences,
         setLastPreferences,
         activityList,
+        deletedIds,
         recordScanActivity,
         recordProjectCompletion,
         deleteScanItem,

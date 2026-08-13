@@ -17,6 +17,7 @@ class DetectionItem(BaseModel):
 
 class ScanResponse(BaseModel):
     success: bool
+    scan_id: Optional[str] = None
     primary_detection: Optional[DetectionItem] = None
     detections: List[DetectionItem] = []
     message: Optional[str] = None

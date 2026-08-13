@@ -7,7 +7,7 @@ import type { HistoryItem, ActivityItem } from '../types/dashboard';
 
 export default function History() {
   const navigate = useNavigate();
-  const { activityList, deleteScanItem, clearAllScans } = useScan();
+  const { activityList, deletedIds, deleteScanItem, clearAllScans } = useScan();
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'completed' | 'in_progress'>('all');
   const [loading, setLoading] = useState(true);
@@ -18,8 +18,9 @@ export default function History() {
       try {
         const res = await fetchUserHistory();
         const apiHistory = res.history || [];
-        const merged: HistoryItem[] = activityList.map((a: ActivityItem) => ({
-          id: a.scan_id || a.project_id,
+        const activeFromContext = activityList.filter(a => !(a.scan_id && deletedIds.includes(a.scan_id)) && !(a.project_id && deletedIds.includes(a.project_id)));
+        const merged: HistoryItem[] = activeFromContext.map((a: ActivityItem) => ({
+          id: a.scan_id || a.project_id || 'scan-id',
           object_name: a.object_name,
           date: a.date,
           recommended_project: a.project_name,
@@ -29,15 +30,17 @@ export default function History() {
         }));
 
         apiHistory.forEach((item: HistoryItem) => {
-          if (!merged.some((m: HistoryItem) => m.id === item.id || m.project_id === item.project_id)) {
+          const isDeleted = (item.id && deletedIds.includes(item.id)) || (item.project_id && deletedIds.includes(item.project_id));
+          if (!isDeleted && !merged.some((m: HistoryItem) => m.id === item.id || m.project_id === item.project_id)) {
             merged.push(item);
           }
         });
 
         setHistoryItems(merged);
       } catch {
-        setHistoryItems(activityList.map((a: ActivityItem) => ({
-          id: a.scan_id || a.project_id,
+        const activeFromContext = activityList.filter(a => !(a.scan_id && deletedIds.includes(a.scan_id)) && !(a.project_id && deletedIds.includes(a.project_id)));
+        setHistoryItems(activeFromContext.map((a: ActivityItem) => ({
+          id: a.scan_id || a.project_id || 'scan-id',
           object_name: a.object_name,
           date: a.date,
           recommended_project: a.project_name,
@@ -50,7 +53,7 @@ export default function History() {
       }
     }
     loadData();
-  }, [activityList]);
+  }, [activityList, deletedIds]);
 
   const handleDeleteItem = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();

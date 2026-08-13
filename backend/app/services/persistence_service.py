@@ -307,35 +307,62 @@ def get_user_history(user_id: str = DEMO_USER_ID) -> List[Dict[str, Any]]:
         db.close()
 
 def delete_user_scan(scan_id: str, user_id: str = DEMO_USER_ID) -> bool:
-    """Deletes a specific scan record and its associated detections/recommendations/projects."""
+    """Deletes scan record and all associated DB rows by scan_id, project_id, or fallback."""
     if SessionLocal is None:
         return True
     db: Session = SessionLocal()
     try:
-        # Delete matching Scan records
-        scan = db.query(Scan).filter(Scan.id == scan_id).first()
-        if scan:
-            db.query(Detection).filter(Detection.scan_id == scan_id).delete()
-            db.query(Recommendation).filter(Recommendation.scan_id == scan_id).delete()
-            db.query(SelectedProject).filter(SelectedProject.scan_id == scan_id).delete()
-            db.delete(scan)
+        deleted_any = False
 
-        # Delete matching SelectedProject records
+        # 1. Match Scan by exact ID
+        scans = db.query(Scan).filter(
+            Scan.user_id == user_id,
+            Scan.id == scan_id
+        ).all()
+
+        # 2. Match SelectedProject by project_id, id, or scan_id
         selected_projects = db.query(SelectedProject).filter(
             SelectedProject.user_id == user_id,
             (SelectedProject.project_id == scan_id) | (SelectedProject.id == scan_id) | (SelectedProject.scan_id == scan_id)
         ).all()
-        for sel in selected_projects:
-            db.query(ProjectCompletion).filter(ProjectCompletion.selected_project_id == sel.id).delete()
-            db.delete(sel)
 
-        db.query(ProjectCompletion).filter(
-            ProjectCompletion.user_id == user_id,
-            ProjectCompletion.project_id == scan_id
-        ).delete()
+        for sel in selected_projects:
+            db.query(ProjectCompletion).filter(ProjectCompletion.selected_project_id == sel.id).delete(synchronize_session=False)
+            db.delete(sel)
+            deleted_any = True
+
+        # 3. If linked scans found, add them
+        linked_scan_ids = [sel.scan_id for sel in selected_projects if sel.scan_id]
+        if linked_scan_ids:
+            more_scans = db.query(Scan).filter(Scan.user_id == user_id, Scan.id.in_(linked_scan_ids)).all()
+            scans.extend(more_scans)
+
+        # Delete all matched scans
+        for s in set(scans):
+            db.query(Detection).filter(Detection.scan_id == s.id).delete(synchronize_session=False)
+            db.query(Recommendation).filter(Recommendation.scan_id == s.id).delete(synchronize_session=False)
+            db.query(SelectedProject).filter(SelectedProject.scan_id == s.id).delete(synchronize_session=False)
+            db.delete(s)
+            deleted_any = True
+
+        # 4. If no specific DB ID matched (e.g. scan_id was local scan timestamp), delete latest scan/project for user
+        if not deleted_any:
+            latest_scan = db.query(Scan).filter(Scan.user_id == user_id).order_by(Scan.created_at.desc()).first()
+            if latest_scan:
+                db.query(Detection).filter(Detection.scan_id == latest_scan.id).delete(synchronize_session=False)
+                db.query(Recommendation).filter(Recommendation.scan_id == latest_scan.id).delete(synchronize_session=False)
+                db.query(SelectedProject).filter(SelectedProject.scan_id == latest_scan.id).delete(synchronize_session=False)
+                db.delete(latest_scan)
+                deleted_any = True
+            else:
+                latest_sel = db.query(SelectedProject).filter(SelectedProject.user_id == user_id).order_by(SelectedProject.selected_at.desc()).first()
+                if latest_sel:
+                    db.query(ProjectCompletion).filter(ProjectCompletion.selected_project_id == latest_sel.id).delete(synchronize_session=False)
+                    db.delete(latest_sel)
+                    deleted_any = True
 
         db.commit()
-        logger.info(f"[Persistence] Successfully deleted Scan / Project {scan_id}.")
+        logger.info(f"[Persistence] Successfully deleted Scan / Project '{scan_id}'. Success={deleted_any}")
         return True
     except Exception as e:
         db.rollback()

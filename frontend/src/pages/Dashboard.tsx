@@ -10,16 +10,16 @@ import type { ActivityItem } from '../types/dashboard';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { activityList, deleteScanItem } = useScan();
+  const { activityList, deletedIds, deleteScanItem } = useScan();
   const [statsData, setStatsData] = useState<{
     total_scans: number;
     total_projects: number;
     completed_projects: number;
     recent_activity: ActivityItem[];
   }>({
-    total_scans: 1,
-    total_projects: 1,
-    completed_projects: 1,
+    total_scans: 0,
+    total_projects: 0,
+    completed_projects: 0,
     recent_activity: []
   });
 
@@ -53,39 +53,36 @@ export default function Dashboard() {
     async function loadStats() {
       try {
         const apiRes = await fetchDashboardStats();
-        // Merge API & context activities dynamically
-        const combined = [...activityList];
+        const activeFromContext = activityList.filter(a => !(a.scan_id && deletedIds.includes(a.scan_id)) && !(a.project_id && deletedIds.includes(a.project_id)));
+        const combined = [...activeFromContext];
+
         if (apiRes.recent_activity) {
           apiRes.recent_activity.forEach(item => {
-            if (!combined.some(c => c.project_id === item.project_id)) {
+            const isDeleted = (item.scan_id && deletedIds.includes(item.scan_id)) || (item.project_id && deletedIds.includes(item.project_id));
+            if (!isDeleted && !combined.some(c => c.project_id === item.project_id || c.scan_id === item.scan_id)) {
               combined.push(item);
             }
           });
         }
 
-        const totalScans = combined.length;
-        const totalProjects = combined.length;
-        const completedProjects = combined.filter(c => c.status === 'completed').length;
-
         setStatsData({
-          total_scans: totalScans,
-          total_projects: totalProjects,
-          completed_projects: completedProjects,
+          total_scans: combined.length,
+          total_projects: combined.length,
+          completed_projects: combined.filter(c => c.status === 'completed').length,
           recent_activity: combined
         });
       } catch {
-        const totalScans = activityList.length;
-        const completedProjects = activityList.filter(c => c.status === 'completed').length;
+        const activeFromContext = activityList.filter(a => !(a.scan_id && deletedIds.includes(a.scan_id)) && !(a.project_id && deletedIds.includes(a.project_id)));
         setStatsData({
-          total_scans: totalScans,
-          total_projects: totalScans,
-          completed_projects: completedProjects,
-          recent_activity: activityList
+          total_scans: activeFromContext.length,
+          total_projects: activeFromContext.length,
+          completed_projects: activeFromContext.filter(c => c.status === 'completed').length,
+          recent_activity: activeFromContext
         });
       }
     }
     loadStats();
-  }, [activityList]);
+  }, [activityList, deletedIds]);
 
   // Dynamic filter calculation
   const displayedActivities = statsData.recent_activity.filter(item => {

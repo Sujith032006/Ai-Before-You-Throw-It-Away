@@ -20,11 +20,12 @@ async def scan_item(file: UploadFile = File(...)):
     
     # 3. Persist scan and detection record
     if response.primary_detection:
-        save_scan_and_detection(
+        saved_scan_id = save_scan_and_detection(
             object_name=response.primary_detection.object,
             confidence=response.primary_detection.confidence,
             bounding_box=response.primary_detection.bounding_box.dict() if response.primary_detection.bounding_box else None
         )
+        response.scan_id = saved_scan_id
         
     return response
 
