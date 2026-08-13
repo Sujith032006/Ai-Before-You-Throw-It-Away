@@ -2,7 +2,6 @@ from PIL import Image, ImageOps
 import logging
 from app.utils.config import AI_MODE, YOLO_CONFIDENCE_THRESHOLD
 from app.schemas.detection import ScanResponse, DetectionItem, BoundingBox
-from app.ai.yolo_detector import yolo_detector
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +42,13 @@ def process_detection(image: Image.Image) -> ScanResponse:
             mode="mock"
         )
 
-    # 2. Real YOLO Inference
-    all_detections = yolo_detector.detect(image)
+    # 2. Real YOLO Inference with Safe Lazy Import (Prevents OOM on 512MB RAM free hosts)
+    all_detections = []
+    try:
+        from app.ai.yolo_detector import yolo_detector
+        all_detections = yolo_detector.detect(image)
+    except Exception as e:
+        logger.error(f"[Detection Service] YOLO detection error: {str(e)}. Falling back to default detection.")
 
     # 3. Filter detections >= confidence threshold
     valid_detections = [d for d in all_detections if d.confidence >= YOLO_CONFIDENCE_THRESHOLD]

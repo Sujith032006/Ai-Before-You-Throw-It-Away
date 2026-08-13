@@ -1,6 +1,5 @@
 from typing import List
 from PIL import Image
-from ultralytics import YOLO
 from app.utils.config import YOLO_MODEL
 from app.schemas.detection import DetectionItem, BoundingBox
 
@@ -11,6 +10,8 @@ class YOLODetector:
 
     def load_model(self):
         if self.model is None:
+            # Lazy import to prevent top-level memory usage spikes
+            from ultralytics import YOLO
             # Loads lightweight pretrained YOLO model (downloads on first run if needed)
             self.model = YOLO(self.model_name)
 
