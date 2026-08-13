@@ -1,6 +1,6 @@
 import type { DetectionResult } from '../types/detection';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+import { API_BASE_URL } from './config';
 
 /**
  * Helper function to convert base64/data URL into a Blob File

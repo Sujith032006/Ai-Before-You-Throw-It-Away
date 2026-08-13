@@ -1,6 +1,6 @@
 import type { RecommendationRequest, RecommendationResponse, ProjectDetails } from '../types/recommendation';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+import { API_BASE_URL } from './config';
 
 export async function fetchRecommendations(req: RecommendationRequest): Promise<RecommendationResponse> {
   try {
