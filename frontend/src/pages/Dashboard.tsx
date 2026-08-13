@@ -58,8 +58,8 @@ export default function Dashboard() {
           });
         }
 
-        const totalScans = Math.max(combined.length, apiRes.total_scans || 1);
-        const totalProjects = Math.max(combined.length, apiRes.total_projects || 1);
+        const totalScans = combined.length;
+        const totalProjects = combined.length;
         const completedProjects = combined.filter(c => c.status === 'completed').length;
 
         setStatsData({
@@ -69,7 +69,7 @@ export default function Dashboard() {
           recent_activity: combined
         });
       } catch {
-        const totalScans = activityList.length || 1;
+        const totalScans = activityList.length;
         const completedProjects = activityList.filter(c => c.status === 'completed').length;
         setStatsData({
           total_scans: totalScans,

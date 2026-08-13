@@ -232,32 +232,18 @@ def get_dashboard_statistics(user_id: str = DEMO_USER_ID) -> Dict[str, Any]:
                 "date": s.created_at.strftime("%d %b %Y")
             })
 
-        # Fallback sample activity if fresh DB
-        if not recent_activity:
-            recent_activity = [
-                {
-                    "scan_id": "sample-scan-1",
-                    "object_name": "Bottle",
-                    "project_name": "Self-Watering Planter",
-                    "project_id": "plastic-bottle-self-watering-planter",
-                    "match_score": 95,
-                    "status": "completed",
-                    "date": datetime.utcnow().strftime("%d %b %Y")
-                }
-            ]
-
         return {
-            "total_scans": max(total_scans, 1),
-            "total_projects": max(total_projects, 1),
+            "total_scans": total_scans,
+            "total_projects": total_projects,
             "completed_projects": completed_projects,
             "recent_activity": recent_activity
         }
     except Exception as e:
         logger.error(f"[Persistence] Error computing dashboard stats: {str(e)}")
         return {
-            "total_scans": 1,
-            "total_projects": 1,
-            "completed_projects": 1,
+            "total_scans": 0,
+            "total_projects": 0,
+            "completed_projects": 0,
             "recent_activity": []
         }
     finally:
@@ -266,17 +252,7 @@ def get_dashboard_statistics(user_id: str = DEMO_USER_ID) -> Dict[str, Any]:
 def get_user_history(user_id: str = DEMO_USER_ID) -> List[Dict[str, Any]]:
     """Returns all scan history items for a user."""
     if SessionLocal is None:
-        return [
-            {
-                "id": "sample-1",
-                "object_name": "Bottle",
-                "date": datetime.utcnow().strftime("%d %b %Y"),
-                "recommended_project": "Self-Watering Planter",
-                "project_id": "plastic-bottle-self-watering-planter",
-                "match_score": 95,
-                "status": "completed"
-            }
-        ]
+        return []
 
     db: Session = SessionLocal()
     try:
@@ -303,19 +279,6 @@ def get_user_history(user_id: str = DEMO_USER_ID) -> List[Dict[str, Any]]:
                 "match_score": score,
                 "status": status
             })
-
-        if not history_items:
-            history_items = [
-                {
-                    "id": "sample-1",
-                    "object_name": "Bottle",
-                    "date": datetime.utcnow().strftime("%d %b %Y"),
-                    "recommended_project": "Self-Watering Planter",
-                    "project_id": "plastic-bottle-self-watering-planter",
-                    "match_score": 95,
-                    "status": "completed"
-                }
-            ]
 
         return history_items
     except Exception as e:

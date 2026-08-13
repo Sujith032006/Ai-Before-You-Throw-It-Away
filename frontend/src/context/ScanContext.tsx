@@ -34,19 +34,9 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [activityList, setActivityList] = useState<ActivityItem[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved !== null) return JSON.parse(saved);
     } catch {}
-    return [
-      {
-        scan_id: 'init-1',
-        object_name: 'Plastic Bottle',
-        project_name: 'Self-Watering Planter',
-        project_id: 'plastic-bottle-self-watering-planter',
-        match_score: 95,
-        status: 'completed',
-        date: new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
-      }
-    ];
+    return [];
   });
 
   useEffect(() => {
@@ -92,7 +82,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const clearAllScans = async () => {
     setActivityList([]);
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
       await clearAllUserHistory();
     } catch {}
   };
