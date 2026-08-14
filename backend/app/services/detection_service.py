@@ -29,7 +29,9 @@ SUPPORTED_OBJECT_CLASSES = {
     "remote_control": ("Remote Control", "plastic & electronics", "Electronic Waste"),
     "cell_phone": ("Cell Phone", "glass, metal & electronics", "Electronic Waste"),
     "e_waste": ("Electronic Appliance", "plastic & metal", "Electronic Waste"),
-    "book": ("Old Book", "paper & cardboard", "Paper & Publishing")
+    "book": ("Old Book", "paper & cardboard", "Paper & Publishing"),
+    "chair": ("Plastic / Wooden Chair", "molded plastic & wood", "Furniture Waste"),
+    "plastic_chair": ("Plastic / Molded Chair", "molded plastic", "Furniture Waste")
 }
 
 def convert_to_normalized_bbox(bbox: Optional[BoundingBox], img_w: int, img_h: int) -> Optional[BBoxNormalized]:

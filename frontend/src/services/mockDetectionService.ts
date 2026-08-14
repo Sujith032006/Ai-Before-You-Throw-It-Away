@@ -14,6 +14,7 @@ export const AVAILABLE_OBJECTS: AvailableObject[] = [
   { object: 'plastic_container', displayName: 'Plastic Food Container', material: 'Polypropylene (PP)', category: 'Household Container' },
   { object: 'egg_carton', displayName: 'Egg Carton', material: 'Molded Pulp / Paper', category: 'Packaging Material' },
   { object: 'shoe_box', displayName: 'Shoe Box', material: 'Cardboard', category: 'Packaging Material' },
+  { object: 'plastic_chair', displayName: 'Plastic / Wooden Chair', material: 'Molded Plastic / Wood', category: 'Furniture Waste' },
 ];
 
 /**

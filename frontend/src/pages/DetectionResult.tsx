@@ -12,6 +12,7 @@ const QUICK_CATEGORIES: Array<AvailableObject & { icon: any }> = [
   { object: 'tin_can', displayName: 'Tin Can', material: 'Aluminum / Steel', category: 'Food Packaging', icon: Box },
   { object: 'glass_jar', displayName: 'Glass Jar', material: 'Glass', category: 'Glass Container', icon: Box },
   { object: 'cardboard_box', displayName: 'Cardboard Box', material: 'Cardboard / Paper', category: 'Packaging Waste', icon: Box },
+  { object: 'plastic_chair', displayName: 'Plastic / Wooden Chair', material: 'Molded Plastic / Wood', category: 'Furniture Waste', icon: Box },
   { object: 'old_tshirt', displayName: 'Old T-Shirt', material: 'Cotton / Fabric', category: 'Textile Waste', icon: Shirt },
   { object: 'book', displayName: 'Old Book', material: 'Paper / Cardboard', category: 'Paper Waste', icon: Book },
 ];

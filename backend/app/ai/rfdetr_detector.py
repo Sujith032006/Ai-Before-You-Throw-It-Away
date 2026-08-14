@@ -31,6 +31,11 @@ RFDETR_CLASS_MAPPINGS = {
     "backpack": ("old_tshirt", "Old Fabric Backpack", "Textile / Fabric", "Clothing & Textile"),
     "tie": ("old_tshirt", "Old Fabric / Tie", "Textile / Fabric", "Clothing & Textile"),
 
+    # Furniture & Seating
+    "chair": ("plastic_chair", "Plastic / Wooden Chair", "Molded Plastic / Wood", "Furniture Waste"),
+    "couch": ("plastic_chair", "Sofa / Seating Chair", "Textile & Wood", "Furniture Waste"),
+    "dining table": ("plastic_chair", "Table / Furniture", "Wood & Plastic", "Furniture Waste"),
+
     # Paper
     "book": ("book", "Old Book", "Paper & Cardboard", "Paper Waste")
 }
