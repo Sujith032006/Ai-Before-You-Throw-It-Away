@@ -7,14 +7,18 @@ FRONTEND_URLS = [
     url.strip() for url in os.getenv("FRONTEND_URL", "http://localhost:5173,http://localhost:5174").split(",")
 ]
 AI_MODE = os.getenv("AI_MODE", "real").lower()
-YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo11m.pt")
-YOLO_CONFIDENCE_THRESHOLD = float(os.getenv("YOLO_CONFIDENCE_THRESHOLD", "0.20"))
-MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "5"))
+
+# RF-DETR Primary Object Detector Configuration
+RFDETR_MODEL = os.getenv("RFDETR_MODEL", "rtdetr-l.pt")
+HIGH_CONFIDENCE_THRESHOLD = float(os.getenv("HIGH_CONFIDENCE_THRESHOLD", "0.80"))
+LOW_CONFIDENCE_THRESHOLD = float(os.getenv("LOW_CONFIDENCE_THRESHOLD", "0.50"))
+
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))
 MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
-# Stage 5 LLM Configuration
-LLM_MODE = os.getenv("LLM_MODE", "mock").lower()
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
+# Multimodal Vision AI Configuration (Gemini 1.5 / OpenAI Vision)
+LLM_MODE = os.getenv("LLM_MODE", "real").lower()
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-1.5-flash")
 LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))

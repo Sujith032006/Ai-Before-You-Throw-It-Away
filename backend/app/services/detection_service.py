@@ -1,127 +1,134 @@
 import asyncio
-from PIL import Image, ImageOps
 import logging
-from app.utils.config import AI_MODE, YOLO_CONFIDENCE_THRESHOLD
-from app.schemas.detection import ScanResponse, DetectionItem, BoundingBox
+from PIL import Image, ImageOps
+from typing import List, Optional
+
+from app.utils.config import (
+    AI_MODE, RFDETR_MODEL, HIGH_CONFIDENCE_THRESHOLD, LOW_CONFIDENCE_THRESHOLD
+)
+from app.schemas.detection import (
+    ScanResponse, DetectionItem, BoundingBox, BBoxNormalized,
+    NormalizedObject, AnalyzerResult
+)
+from app.services.image_quality_service import evaluate_image_quality
 
 logger = logging.getLogger(__name__)
 
-# COCO Class & Household Object Mapping for 100% accurate upcycling classification
-CLASS_MAPPINGS = {
-    # Electronics / Tech & Remote Controls
-    "remote": ("remote_control", "Remote Control", "Plastic & Circuit Board", "Electronic Waste"),
-    "remote control": ("remote_control", "Remote Control", "Plastic & Circuit Board", "Electronic Waste"),
-    "cell phone": ("cell_phone", "Cell Phone / Smart Device", "Glass, Metal & Battery", "Electronic Waste"),
-    "mobile phone": ("cell_phone", "Cell Phone / Smart Device", "Glass, Metal & Battery", "Electronic Waste"),
-    "tv": ("e_waste", "Electronic Appliance / Monitor", "Plastic & Circuit Board", "Electronic Waste"),
-    "laptop": ("e_waste", "Laptop / Portable Computer", "Aluminum & Electronics", "Electronic Waste"),
-    "mouse": ("e_waste", "Computer Mouse", "Plastic & Wire", "Electronic Waste"),
-    "keyboard": ("e_waste", "Computer Keyboard", "Plastic & Electronics", "Electronic Waste"),
-
-    # Household Containers & Vessels
-    "bottle": ("plastic_bottle", "Plastic Bottle", "Plastic (PET)", "Household Container"),
-    "cup": ("tin_can", "Tin Can / Beverage Cup", "Metal (Aluminum/Steel)", "Kitchen Container"),
-    "bowl": ("tin_can", "Food Bowl / Container", "Metal / Ceramic", "Kitchen Container"),
-    "vase": ("glass_jar", "Glass Jar", "Glass", "Glass Container"),
-    "wine glass": ("glass_jar", "Glass Jar", "Glass", "Glass Container"),
-
-    # Packaging & Boxes
-    "box": ("cardboard_box", "Cardboard Box", "Paper / Cardboard", "Packaging Waste"),
-    "suitcase": ("cardboard_box", "Cardboard Box / Case", "Paper / Plastic", "Packaging Waste"),
-
-    # Fabrics & Textiles
-    "handbag": ("old_tshirt", "Old Fabric / Tote Bag", "Textile / Fabric", "Clothing & Textile"),
-    "tie": ("old_tshirt", "Old T-Shirt / Fabric", "Textile / Fabric", "Clothing & Textile"),
-    "backpack": ("old_tshirt", "Old Fabric Backpack", "Textile / Fabric", "Clothing & Textile"),
-
-    # Household & Paper
-    "book": ("book", "Old Book", "Paper & Cardboard", "Paper Waste"),
-    "clock": ("clock", "Wall Clock / Timer", "Plastic & Metal", "Household Hardware"),
-    "scissors": ("tin_can", "Metal Scissors / Tool", "Metal & Plastic", "Metal Tool"),
+# Allowed object classes aligned with recommendation database
+SUPPORTED_OBJECT_CLASSES = {
+    "plastic_bottle": ("Plastic Bottle", "plastic", "Household Container"),
+    "glass_bottle": ("Glass Bottle", "glass", "Household Container"),
+    "plastic_container": ("Plastic Container", "plastic", "Kitchen Storage"),
+    "glass_jar": ("Glass Jar", "glass", "Pantry Storage"),
+    "cardboard_box": ("Cardboard Box", "cardboard", "Packaging Waste"),
+    "tin_can": ("Tin Can", "metal", "Kitchen Packaging"),
+    "old_tshirt": ("Old T-Shirt", "cotton fabric", "Textiles & Clothing"),
+    "jeans": ("Denim Jeans", "denim fabric", "Textiles & Clothing"),
+    "egg_carton": ("Egg Carton", "molded pulp", "Biodegradable Packaging"),
+    "shoe_box": ("Shoe Box", "cardboard", "Packaging Waste"),
+    "remote_control": ("Remote Control", "plastic & electronics", "Electronic Waste"),
+    "cell_phone": ("Cell Phone", "glass, metal & electronics", "Electronic Waste"),
+    "e_waste": ("Electronic Appliance", "plastic & metal", "Electronic Waste"),
+    "book": ("Old Book", "paper & cardboard", "Paper & Publishing")
 }
 
-def analyze_image_aspect_ratio(image: Image.Image) -> DetectionItem:
-    """
-    Intelligent heuristic computer vision fallback:
-    Analyzes physical image aspect ratio, dimensions, and visual features when YOLO or API keys are offline.
-    Prevents false fallback to 'Plastic Bottle' for laptops, remotes, phones, or boxes!
-    """
-    width, height = image.size
-    aspect_ratio = max(width, height) / max(min(width, height), 1)
-
-    # Convert to RGB & get color/brightness histogram
-    img_rgb = image.convert("RGB")
-    stat_img = img_rgb.resize((50, 50))
-    pixels = [stat_img.getpixel((x, y)) for x in range(50) for y in range(50)]
-    avg_r = sum(p[0] for p in pixels) / len(pixels)
-    avg_g = sum(p[1] for p in pixels) / len(pixels)
-    avg_b = sum(p[2] for p in pixels) / len(pixels)
-    brightness = (avg_r + avg_g + avg_b) / 3.0
-
-    # 1. Wide rectangular dark/metallic object -> Laptop / Tablet / Screen Device
-    if width > height and aspect_ratio >= 1.25 and brightness < 150:
-        return DetectionItem(
-            object="e_waste",
-            display_name="Laptop / Electronic Device",
-            confidence=0.89,
-            material="Aluminum, Plastic & Electronics",
-            category="Electronic Waste",
-            bounding_box=BoundingBox(x1=15, y1=15, x2=width-15, y2=height-15)
-        )
-
-    # 2. Elongated vertical/horizontal item -> Remote Control / Small Handheld Tech Device
-    if aspect_ratio >= 2.1:
-        return DetectionItem(
-            object="remote_control",
-            display_name="Remote Control / E-Waste",
-            confidence=0.88,
-            material="Plastic & Circuit Board",
-            category="Electronic Waste",
-            bounding_box=BoundingBox(x1=20, y1=20, x2=width-20, y2=height-20)
-        )
-
-    # 3. Square / Boxy packaging item -> Cardboard Box / Shipping Box
-    if aspect_ratio <= 1.25:
-        return DetectionItem(
-            object="cardboard_box",
-            display_name="Cardboard Box / Packaging",
-            confidence=0.85,
-            material="Cardboard / Paper",
-            category="Packaging Waste",
-            bounding_box=BoundingBox(x1=25, y1=25, x2=width-25, y2=height-25)
-        )
-
-    # 4. Vertical bottle/container item
-    return DetectionItem(
-        object="plastic_bottle",
-        display_name="Plastic Bottle / Container",
-        confidence=0.80,
-        material="Plastic (PET)",
-        category="Household Container",
-        bounding_box=BoundingBox(x1=30, y1=30, x2=width-30, y2=height-30)
+def convert_to_normalized_bbox(bbox: Optional[BoundingBox], img_w: int, img_h: int) -> Optional[BBoxNormalized]:
+    if not bbox:
+        return None
+    w = max(1.0, bbox.x2 - bbox.x1)
+    h = max(1.0, bbox.y2 - bbox.y1)
+    return BBoxNormalized(
+        x=round(bbox.x1, 2),
+        y=round(bbox.y1, 2),
+        width=round(w, 2),
+        height=round(h, 2)
     )
 
-def process_detection(image: Image.Image) -> ScanResponse:
-    # 1. Correct Image Orientation from EXIF metadata
+def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanResponse:
+    # 1. Correct Image Orientation from EXIF
     try:
         image = ImageOps.exif_transpose(image)
     except Exception as e:
         logger.warning(f"[Detection Service] EXIF transpose error: {str(e)}")
 
-    import os
-    current_mode = os.getenv("AI_MODE", AI_MODE).lower()
+    img_w, img_h = image.size
 
-    if current_mode == "mock":
-        heuristic_item = analyze_image_aspect_ratio(image)
+    # 2. Image Quality Pre-Checker
+    quality_res = evaluate_image_quality(image, file_size_bytes)
+    if not quality_res["is_acceptable"]:
+        logger.warning(f"[Detection Service] Quality check failed: {quality_res['reason']}")
+        poor_obj = NormalizedObject(
+            name="unknown",
+            display_name="Poor Quality Photo",
+            material="unknown",
+            condition="unknown",
+            category="quality_warning"
+        )
+        analyzer_res = AnalyzerResult(
+            object=poor_obj,
+            confidence=0.0,
+            source="quality_check",
+            status="poor_image_quality",
+            suggestions=quality_res.get("suggestions", [])
+        )
         return ScanResponse(
-            success=True,
-            primary_detection=heuristic_item,
-            detections=[heuristic_item],
-            message=f"Identified {heuristic_item.display_name} with {int(heuristic_item.confidence*100)}% confidence.",
-            mode="mock"
+            success=False,
+            analysis=analyzer_res,
+            message=quality_res["reason"],
+            mode="quality_check"
         )
 
-    # 2. PRIMARY STEP: Multimodal Vision AI (Gemini 1.5 / OpenAI Vision) - 98%+ Accuracy
+    # 3. Primary Engine: RF-DETR Object Detector
+    rfdetr_detections: List[DetectionItem] = []
+    try:
+        from app.ai.rfdetr_detector import rfdetr_detector
+        rfdetr_detections = rfdetr_detector.detect(image)
+    except Exception as e:
+        logger.error(f"[Detection Service] RF-DETR detection error: {str(e)}")
+
+    # 4. Multi-Object Filtering & Bounding Box Area Strategy
+    img_area = float(img_w * img_h)
+    filtered_detections: List[DetectionItem] = []
+
+    for d in rfdetr_detections:
+        if d.bounding_box:
+            box_area = (d.bounding_box.x2 - d.bounding_box.x1) * (d.bounding_box.y2 - d.bounding_box.y1)
+            # Filter out tiny spurious bounding boxes (< 1.0% of total image area)
+            if box_area < (img_area * 0.01) and len(rfdetr_detections) > 1:
+                continue
+            d.bbox_normalized = convert_to_normalized_bbox(d.bounding_box, img_w, img_h)
+        filtered_detections.append(d)
+
+    top_detection = filtered_detections[0] if filtered_detections else None
+
+    # 5. High-Confidence Decision
+    if top_detection and top_detection.confidence >= HIGH_CONFIDENCE_THRESHOLD and top_detection.object in SUPPORTED_OBJECT_CLASSES:
+        disp_name, mat, cat = SUPPORTED_OBJECT_CLASSES[top_detection.object]
+        norm_obj = NormalizedObject(
+            name=top_detection.object,
+            display_name=disp_name,
+            material=mat,
+            condition="usable",
+            category=cat
+        )
+        analysis_res = AnalyzerResult(
+            object=norm_obj,
+            confidence=round(top_detection.confidence, 4),
+            source="rf_detr",
+            status="high_confidence",
+            bbox=top_detection.bbox_normalized
+        )
+        return ScanResponse(
+            success=True,
+            analysis=analysis_res,
+            primary_detection=top_detection,
+            detections=filtered_detections,
+            message=f"Identified {disp_name} with {int(top_detection.confidence*100)}% RF-DETR confidence.",
+            mode="rf_detr"
+        )
+
+    # 6. Vision AI Verification Fallback (for low confidence or obscure objects)
+    vision_item = None
     try:
         from app.ai.vision_detector import analyze_image_with_vision_ai
         loop = None
@@ -131,53 +138,100 @@ def process_detection(image: Image.Image) -> ScanResponse:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        vision_item = loop.run_until_complete(analyze_image_with_vision_ai(image)) if loop and not loop.is_running() else None
-        if vision_item:
-            logger.info(f"[Detection Service] Primary Multimodal Vision AI identified '{vision_item.display_name}'.")
-            return ScanResponse(
-                success=True,
-                primary_detection=vision_item,
-                detections=[vision_item],
-                message=f"Identified {vision_item.display_name} using Multimodal Vision AI with {int(vision_item.confidence*100)}% confidence.",
-                mode="real"
-            )
+        if loop and not loop.is_running():
+            vision_item = loop.run_until_complete(analyze_image_with_vision_ai(image))
     except Exception as vision_err:
-        logger.warning(f"[Detection Service] Primary Vision AI call skipped: {str(vision_err)}")
+        logger.warning(f"[Detection Service] Vision AI verification skipped: {str(vision_err)}")
 
-    # 3. SECONDARY STEP: Real YOLO Computer Vision Inference (YOLOv11)
-    all_detections = []
-    try:
-        from app.ai.yolo_detector import yolo_detector
-        all_detections = yolo_detector.detect(image)
-    except Exception as e:
-        logger.error(f"[Detection Service] YOLO detection error: {str(e)}. Using vision feature fallback.")
+    if vision_item and vision_item.object != "unknown":
+        obj_key = vision_item.object
+        if obj_key in SUPPORTED_OBJECT_CLASSES:
+            disp_name, mat, cat = SUPPORTED_OBJECT_CLASSES[obj_key]
+        else:
+            disp_name = vision_item.display_name
+            mat = vision_item.material or "Reusable Material"
+            cat = vision_item.category or "Household Object"
 
-    # Filter detections >= threshold
-    valid_detections = [d for d in all_detections if d.confidence >= YOLO_CONFIDENCE_THRESHOLD]
-
-    if valid_detections:
-        primary_det = valid_detections[0]
-        raw_obj = primary_det.object.lower().strip()
-        if raw_obj in CLASS_MAPPINGS:
-            obj_key, display_name, material, category = CLASS_MAPPINGS[raw_obj]
-            primary_det.object = obj_key
-            primary_det.display_name = display_name
-            primary_det.material = material
-            primary_det.category = category
+        norm_obj = NormalizedObject(
+            name=obj_key,
+            display_name=disp_name,
+            material=mat,
+            condition="usable",
+            category=cat
+        )
+        bbox_norm = convert_to_normalized_bbox(vision_item.bounding_box, img_w, img_h)
+        analysis_res = AnalyzerResult(
+            object=norm_obj,
+            confidence=round(vision_item.confidence, 4),
+            source="vision_ai",
+            status="verified",
+            bbox=bbox_norm
+        )
         return ScanResponse(
             success=True,
-            primary_detection=primary_det,
-            detections=valid_detections,
-            message=f"Identified {primary_det.display_name} with {int(primary_det.confidence*100)}% confidence.",
-            mode="real"
+            analysis=analysis_res,
+            primary_detection=vision_item,
+            detections=[vision_item] + filtered_detections,
+            message=f"Verified {disp_name} using Multimodal Vision AI with {int(vision_item.confidence*100)}% confidence.",
+            mode="vision_ai"
         )
 
-    # 4. TERTIARY STEP: Smart Aspect Ratio Visual Feature Fallback
-    heuristic_item = analyze_image_aspect_ratio(image)
+    # 7. RF-DETR Detection Return
+    if top_detection:
+        obj_key = top_detection.object
+        if obj_key in SUPPORTED_OBJECT_CLASSES:
+            disp_name, mat, cat = SUPPORTED_OBJECT_CLASSES[obj_key]
+        else:
+            disp_name = top_detection.display_name
+            mat = top_detection.material or "Reusable Material"
+            cat = top_detection.category or "Household Object"
+
+        status_str = "high_confidence" if top_detection.confidence >= HIGH_CONFIDENCE_THRESHOLD else ("verified" if top_detection.confidence >= LOW_CONFIDENCE_THRESHOLD else "uncertain")
+        norm_obj = NormalizedObject(
+            name=obj_key,
+            display_name=disp_name,
+            material=mat,
+            condition="usable",
+            category=cat
+        )
+        analysis_res = AnalyzerResult(
+            object=norm_obj,
+            confidence=round(top_detection.confidence, 4),
+            source="rf_detr",
+            status=status_str,
+            bbox=top_detection.bbox_normalized
+        )
+        return ScanResponse(
+            success=True,
+            analysis=analysis_res,
+            primary_detection=top_detection,
+            detections=filtered_detections,
+            message=f"Identified {disp_name} with {int(top_detection.confidence*100)}% confidence.",
+            mode="rf_detr"
+        )
+
+    # 8. Unknown Object Safeguard
+    unknown_obj = NormalizedObject(
+        name="unknown",
+        display_name="Unknown Object",
+        material="unknown",
+        condition="unknown",
+        category="unknown"
+    )
+    analysis_res = AnalyzerResult(
+        object=unknown_obj,
+        confidence=0.0,
+        source="hybrid",
+        status="unknown",
+        suggestions=[
+            "Move closer to the main object.",
+            "Ensure good lighting and avoid shadows.",
+            "Keep the object centered in the frame."
+        ]
+    )
     return ScanResponse(
-        success=True,
-        primary_detection=heuristic_item,
-        detections=[heuristic_item],
-        message=f"Identified {heuristic_item.display_name} with {int(heuristic_item.confidence*100)}% confidence.",
-        mode="real"
+        success=False,
+        analysis=analysis_res,
+        message="Could not confidently identify the object.",
+        mode="hybrid"
     )
