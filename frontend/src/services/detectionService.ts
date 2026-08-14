@@ -61,10 +61,21 @@ export async function analyzeImageWithBackend(imageInput: string | File): Promis
   formData.append('file', fileToUpload);
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+    // 1. Try POST /api/analyze
+    let response = await fetch(`${API_BASE_URL}/api/analyze`, {
       method: 'POST',
       body: formData,
     });
+
+    // 2. Fallback to POST /api/scan if /api/analyze is 404 (mid-deployment on Render)
+    if (response.status === 404) {
+      const formDataScan = new FormData();
+      formDataScan.append('file', fileToUpload);
+      response = await fetch(`${API_BASE_URL}/api/scan`, {
+        method: 'POST',
+        body: formDataScan,
+      });
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
