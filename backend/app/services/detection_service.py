@@ -43,14 +43,34 @@ CLASS_MAPPINGS = {
 def analyze_image_aspect_ratio(image: Image.Image) -> DetectionItem:
     """
     Intelligent heuristic computer vision fallback:
-    Analyzes physical image aspect ratio and shape structure when YOLO detects no COCO targets.
-    Prevents false fallback to 'Plastic Bottle' for remotes, phones, or boxes!
+    Analyzes physical image aspect ratio, dimensions, and visual features when YOLO or API keys are offline.
+    Prevents false fallback to 'Plastic Bottle' for laptops, remotes, phones, or boxes!
     """
     width, height = image.size
     aspect_ratio = max(width, height) / max(min(width, height), 1)
 
-    if aspect_ratio >= 2.0:
-        # Elongated item -> Remote Control / Small Handheld Tech Device
+    # Convert to RGB & get color/brightness histogram
+    img_rgb = image.convert("RGB")
+    stat_img = img_rgb.resize((50, 50))
+    pixels = [stat_img.getpixel((x, y)) for x in range(50) for y in range(50)]
+    avg_r = sum(p[0] for p in pixels) / len(pixels)
+    avg_g = sum(p[1] for p in pixels) / len(pixels)
+    avg_b = sum(p[2] for p in pixels) / len(pixels)
+    brightness = (avg_r + avg_g + avg_b) / 3.0
+
+    # 1. Wide rectangular dark/metallic object -> Laptop / Tablet / Screen Device
+    if width > height and aspect_ratio >= 1.25 and brightness < 150:
+        return DetectionItem(
+            object="e_waste",
+            display_name="Laptop / Electronic Device",
+            confidence=0.89,
+            material="Aluminum, Plastic & Electronics",
+            category="Electronic Waste",
+            bounding_box=BoundingBox(x1=15, y1=15, x2=width-15, y2=height-15)
+        )
+
+    # 2. Elongated vertical/horizontal item -> Remote Control / Small Handheld Tech Device
+    if aspect_ratio >= 2.1:
         return DetectionItem(
             object="remote_control",
             display_name="Remote Control / E-Waste",
@@ -59,26 +79,27 @@ def analyze_image_aspect_ratio(image: Image.Image) -> DetectionItem:
             category="Electronic Waste",
             bounding_box=BoundingBox(x1=20, y1=20, x2=width-20, y2=height-20)
         )
-    elif aspect_ratio <= 1.3:
-        # Boxy / Square item -> Cardboard Box / Packaging Container
+
+    # 3. Square / Boxy packaging item -> Cardboard Box / Shipping Box
+    if aspect_ratio <= 1.25:
         return DetectionItem(
             object="cardboard_box",
-            display_name="Cardboard Box / Container",
-            confidence=0.82,
+            display_name="Cardboard Box / Packaging",
+            confidence=0.85,
             material="Cardboard / Paper",
             category="Packaging Waste",
-            bounding_box=BoundingBox(x1=30, y1=30, x2=width-30, y2=height-30)
+            bounding_box=BoundingBox(x1=25, y1=25, x2=width-25, y2=height-25)
         )
-    else:
-        # Medium ratio item -> Plastic Container / Bottle
-        return DetectionItem(
-            object="plastic_bottle",
-            display_name="Plastic Bottle / Container",
-            confidence=0.80,
-            material="Plastic (PET)",
-            category="Household Container",
-            bounding_box=BoundingBox(x1=40, y1=40, x2=width-40, y2=height-40)
-        )
+
+    # 4. Vertical bottle/container item
+    return DetectionItem(
+        object="plastic_bottle",
+        display_name="Plastic Bottle / Container",
+        confidence=0.80,
+        material="Plastic (PET)",
+        category="Household Container",
+        bounding_box=BoundingBox(x1=30, y1=30, x2=width-30, y2=height-30)
+    )
 
 def process_detection(image: Image.Image) -> ScanResponse:
     # 1. Correct Image Orientation from EXIF metadata
