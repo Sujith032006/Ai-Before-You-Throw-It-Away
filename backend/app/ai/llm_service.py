@@ -3,7 +3,8 @@ import logging
 from typing import Dict, Any, List
 from app.schemas.ai import (
     PersonalizedGuideRequest, PersonalizedGuideResponse, 
-    GuideItemStatus, GuideStep, ChatRequest, ChatResponse
+    GuideItemStatus, GuideStep, ChatRequest, ChatResponse,
+    GeneralIdeasRequest, GeneralIdeasResponse
 )
 from app.services.reuse_repository import reuse_repository
 from app.ai.llm_provider import get_llm_provider
@@ -130,4 +131,53 @@ async def chat_with_assistant(req: ChatRequest) -> ChatResponse:
             success=False,
             message="Sorry, the AI Assistant is temporarily unavailable. Please refer to the safety notes and guide steps above.",
             error=str(e)
+        )
+
+async def generate_general_ideas(req: GeneralIdeasRequest) -> GeneralIdeasResponse:
+    obj = req.object_name.replace("_", " ").title()
+    mat = req.material if req.material and req.material != "unknown" else "material"
+
+    prompt = f"Provide 4 creative, practical upcycling, refurbishing, or repurposing ideas for a {obj} (Made of: {mat}). Return as a JSON array of strings under key 'ideas'."
+    sys_prompt = "You are an expert sustainable design and upcycling assistant. Return valid JSON: {\"ideas\": [\"Idea 1\", \"Idea 2\", \"Idea 3\", \"Idea 4\"]}"
+
+    provider = get_llm_provider()
+    try:
+        raw_res = await provider.generate_response(sys_prompt, prompt, expect_json=True)
+        clean_json_str = raw_res.strip()
+        if clean_json_str.startswith("```"):
+            parts = clean_json_str.split("```")
+            if len(parts) >= 2:
+                clean_json_str = parts[1]
+                if clean_json_str.startswith("json"):
+                    clean_json_str = clean_json_str[4:]
+        clean_json_str = clean_json_str.strip()
+
+        data = json.loads(clean_json_str)
+        ideas_list = data.get("ideas", [])
+        if not ideas_list:
+            ideas_list = [
+                f"Repaint or refinish the surface of the {obj} to give it a fresh look.",
+                f"Repurpose the {obj} as a decorative planter or garden ornament.",
+                f"Convert into a unique storage or organizational rack.",
+                f"Donate to a local community recycling center or furniture charity."
+            ]
+        return GeneralIdeasResponse(
+            success=True,
+            object_name=obj,
+            ideas=ideas_list,
+            message=f"Generated {len(ideas_list)} general upcycling ideas for {obj}."
+        )
+    except Exception as e:
+        logger.warning(f"[LLM Service] Error generating general ideas: {str(e)}")
+        fallback_ideas = [
+            f"Repaint or refinish the surface of the {obj} to give it a fresh modern look.",
+            f"Repurpose the {obj} as an outdoor planter or garden centerpiece.",
+            f"Convert into a unique storage shelf or wall hanger.",
+            f"Donate to a local repair workshop or community charity."
+        ]
+        return GeneralIdeasResponse(
+            success=True,
+            object_name=obj,
+            ideas=fallback_ideas,
+            message=f"Generated fallback ideas for {obj}."
         )

@@ -33,8 +33,9 @@ export async function analyzeImage(imageSrc: string): Promise<DetectionResult> {
       resolve({
         object: selected.object,
         displayName: selected.displayName,
+        supported: true,
         confidence: 0.90,
-        confidenceText: '90%',
+        confidenceText: 'HIGH Confidence',
         material: selected.material,
         category: selected.category,
         image: imageSrc,

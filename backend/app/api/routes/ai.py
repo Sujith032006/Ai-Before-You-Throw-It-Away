@@ -1,10 +1,10 @@
 from fastapi import APIRouter, status
 from app.schemas.ai import (
     PersonalizedGuideRequest, PersonalizedGuideResponse,
-    ChatRequest, ChatResponse
+    ChatRequest, ChatResponse,
+    GeneralIdeasRequest, GeneralIdeasResponse
 )
-from app.ai.llm_service import generate_personalized_guide, chat_with_assistant
-
+from app.ai.llm_service import generate_personalized_guide, chat_with_assistant, generate_general_ideas
 from app.services.persistence_service import save_selected_project_and_guide, save_chat_turn
 
 router = APIRouter(prefix="/api", tags=["Generative AI"])
@@ -30,3 +30,6 @@ async def chat_with_ai(request: ChatRequest):
         )
     return chat_response
 
+@router.post("/general-ideas", response_model=GeneralIdeasResponse, status_code=status.HTTP_200_OK)
+async def get_general_ideas(request: GeneralIdeasRequest):
+    return await generate_general_ideas(request)

@@ -14,28 +14,37 @@ class BBoxNormalized(BaseModel):
     height: float
 
 class NormalizedObject(BaseModel):
-    name: str
-    display_name: str
-    material: str = "Reusable Material"
-    condition: str = "good"
+    name: str  # e.g., "plastic_bottle", "glass_bottle", "chair", "laptop"
+    display_name: str  # e.g., "Plastic Bottle", "Glass Bottle", "Chair"
+    base_object: str = "object"  # e.g., "bottle", "chair", "laptop"
+    material: str = "unknown"  # e.g., "plastic", "glass", "wood", "metal", "electronic"
+    condition: str = "usable"  # e.g., "usable", "used", "damaged"
     category: str = "Household Object"
+    supported: bool = False
+    confidence: float = 0.0
+    confidence_level: str = "none"  # "high", "medium", "low", "none"
 
 class DetectionItem(BaseModel):
     object: str
     display_name: str
     confidence: float
-    material: Optional[str] = "Reusable Material"
+    material: Optional[str] = "unknown"
     category: Optional[str] = "Household Object"
     bounding_box: Optional[BoundingBox] = None
     bbox_normalized: Optional[BBoxNormalized] = None
 
 class AnalyzerResult(BaseModel):
     object: NormalizedObject
-    confidence: float
-    source: str  # "rf_detr", "vision_ai", "hybrid"
-    status: str  # "high_confidence", "verified", "uncertain", "unknown", "poor_image_quality"
+    supported: bool = False
+    confidence: float = 0.0
+    confidence_level: str = "none"  # "high", "medium", "low", "none"
+    source: str = "hybrid"  # "rf_detr", "vision_ai", "hybrid", "quality_check"
+    status: str = "ambiguous"  # "identified", "identified_but_unsupported", "multiple_objects", "ambiguous", "poor_image_quality"
+    verification: str = "consistent"  # "consistent", "conflict_resolved", "vision_ai_primary", "rf_detr_primary", "conflict_unresolved"
     bbox: Optional[BBoxNormalized] = None
+    detected_objects: List[NormalizedObject] = []
     suggestions: List[str] = []
+    debug_info: Optional[Dict[str, Any]] = None
 
 class ScanResponse(BaseModel):
     success: bool
@@ -44,4 +53,4 @@ class ScanResponse(BaseModel):
     primary_detection: Optional[DetectionItem] = None
     detections: List[DetectionItem] = []
     message: Optional[str] = None
-    mode: str = "rf_detr"
+    mode: str = "hybrid"

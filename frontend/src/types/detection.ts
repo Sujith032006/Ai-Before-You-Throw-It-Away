@@ -8,32 +8,47 @@ export interface BBoxNormalized {
 export interface NormalizedObject {
   name: string;
   display_name: string;
+  base_object?: string;
   material: string;
-  condition: string;
+  condition?: string;
   category: string;
+  supported?: boolean;
+  confidence?: number;
+  confidence_level?: 'high' | 'medium' | 'low' | 'none' | string;
 }
 
 export interface AnalyzerResult {
   object: NormalizedObject;
+  supported: boolean;
   confidence: number;
+  confidence_level: 'high' | 'medium' | 'low' | 'none' | string;
   source: 'rf_detr' | 'vision_ai' | 'hybrid' | 'quality_check' | string;
-  status: 'high_confidence' | 'verified' | 'uncertain' | 'unknown' | 'poor_image_quality' | string;
+  status: 'identified' | 'identified_but_unsupported' | 'multiple_objects' | 'ambiguous' | 'poor_image_quality' | string;
+  verification: 'consistent' | 'conflict_resolved' | 'vision_ai_primary' | 'rf_detr_primary' | 'conflict_unresolved' | string;
   bbox?: BBoxNormalized;
+  detected_objects?: NormalizedObject[];
   suggestions?: string[];
+  debug_info?: Record<string, any>;
 }
 
 export interface DetectionResult {
   object: string;
   displayName: string;
-  confidence: number | null; // e.g., 0.96 for 96%, or null if manually selected
-  confidenceText?: string;   // e.g., "96%" or "Manually selected"
+  baseObject?: string;
+  supported: boolean;
+  confidence: number | null;
+  confidenceText?: string;
+  confidenceLevel?: string;
   material: string;
   category: string;
-  image?: string; // base64 or object URL string
+  image?: string;
   analysis?: AnalyzerResult;
   source?: string;
   status?: string;
+  verification?: string;
   suggestions?: string[];
+  detectedObjects?: NormalizedObject[];
+  debugInfo?: Record<string, any>;
 }
 
 export interface AvailableObject {

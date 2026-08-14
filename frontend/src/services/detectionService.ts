@@ -84,21 +84,30 @@ export async function analyzeImageWithBackend(imageInput: string | File): Promis
 
     const data: BackendScanResponse = await response.json();
 
-    // Check normalized analysis
+    // Check normalized analysis from two-stage analyzer
     if (data.analysis) {
       const normObj = data.analysis.object;
+      const confLevel = data.analysis.confidence_level || (data.analysis.confidence >= 0.85 ? 'high' : data.analysis.confidence >= 0.65 ? 'medium' : 'low');
+      const confText = `${confLevel.toUpperCase()} Confidence`;
+
       return {
         object: normObj.name,
         displayName: normObj.display_name,
+        baseObject: normObj.base_object,
+        supported: data.analysis.supported ?? normObj.supported ?? false,
         confidence: data.analysis.confidence,
-        confidenceText: `${Math.round(data.analysis.confidence * 100)}%`,
-        material: normObj.material || 'Reusable Material',
+        confidenceText: confText,
+        confidenceLevel: confLevel,
+        material: normObj.material || 'unknown',
         category: normObj.category || 'Household Object',
         image: typeof imageInput === 'string' ? imageInput : URL.createObjectURL(imageInput),
         analysis: data.analysis,
         source: data.analysis.source,
         status: data.analysis.status,
-        suggestions: data.analysis.suggestions
+        verification: data.analysis.verification,
+        suggestions: data.analysis.suggestions,
+        detectedObjects: data.analysis.detected_objects,
+        debugInfo: data.analysis.debug_info
       };
     }
 
@@ -111,9 +120,11 @@ export async function analyzeImageWithBackend(imageInput: string | File): Promis
     return {
       object: primary.object,
       displayName: primary.display_name,
+      supported: true,
       confidence: primary.confidence,
-      confidenceText: `${Math.round(primary.confidence * 100)}%`,
-      material: primary.material || 'Reusable Material',
+      confidenceText: 'HIGH Confidence',
+      confidenceLevel: 'high',
+      material: primary.material || 'unknown',
       category: primary.category || 'Household Object',
       image: typeof imageInput === 'string' ? imageInput : URL.createObjectURL(imageInput),
     };
@@ -122,5 +133,28 @@ export async function analyzeImageWithBackend(imageInput: string | File): Promis
       throw new Error('Unable to connect to the AI service. Please make sure the backend server is running on ' + API_BASE_URL);
     }
     throw err;
+  }
+}
+
+/**
+ * Calls POST /api/general-ideas for unsupported objects
+ */
+export async function fetchGeneralIdeas(objectName: string, material: string = 'unknown'): Promise<string[]> {
+  try {
+    const resp = await fetch(`${API_BASE_URL}/api/general-ideas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ object_name: objectName, material: material }),
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return data.ideas || [];
+  } catch {
+    return [
+      `Repaint or refinish the ${objectName} surface for a fresh look.`,
+      `Repurpose as an outdoor planter or garden centerpiece.`,
+      `Convert into a unique storage or organizational rack.`,
+      `Donate to a local community recycling center or repair workshop.`
+    ];
   }
 }

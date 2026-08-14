@@ -55,3 +55,14 @@ class ChatResponse(BaseModel):
     success: bool
     message: str
     error: Optional[str] = None
+
+class GeneralIdeasRequest(BaseModel):
+    object_name: str
+    material: Optional[str] = "unknown"
+
+class GeneralIdeasResponse(BaseModel):
+    success: bool
+    object_name: str
+    ideas: List[str] = []
+    disclaimer: str = "These are general AI suggestions, not validated structured reuse projects."
+    message: Optional[str] = None
