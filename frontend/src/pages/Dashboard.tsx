@@ -127,7 +127,7 @@ export default function Dashboard() {
               </h1>
               
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
-                Divert household waste from landfills. Scan objects with real-time YOLO computer vision to unlock personalized DIY upcycling projects tailored to your tools and goals.
+                Divert household waste from landfills. Scan objects with real-time RF-DETR object detection to unlock personalized DIY upcycling projects tailored to your tools and goals.
               </p>
             </div>
 
@@ -420,7 +420,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <h3 className="font-bold text-white text-xs">Computer Vision Scan</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Capture or upload photos. Ultralytics YOLO detects household items instantly.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Capture or upload photos. RF-DETR Transformer detects household items instantly.</p>
                 </div>
               </div>
 

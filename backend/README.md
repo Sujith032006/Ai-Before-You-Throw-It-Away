@@ -1,6 +1,6 @@
 # 🐍 Before You Throw It Away — FastAPI Backend
 
-FastAPI application providing computer vision object detection endpoints powered by Ultralytics YOLO.
+FastAPI application providing object detection and analysis endpoints powered by **RF-DETR (Real-Time Detection Transformer)** and **Multimodal Vision AI**.
 
 ---
 
@@ -36,9 +36,15 @@ Default Configuration:
 ```env
 FRONTEND_URL=http://localhost:5173,http://localhost:5174
 AI_MODE=real
-YOLO_MODEL=yolo11n.pt
-YOLO_CONFIDENCE_THRESHOLD=0.40
-MAX_UPLOAD_SIZE_MB=5
+RFDETR_MODEL=rtdetr-l.pt
+HIGH_CONFIDENCE_THRESHOLD=0.80
+LOW_CONFIDENCE_THRESHOLD=0.50
+MAX_UPLOAD_SIZE_MB=10
+
+LLM_MODE=real
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-1.5-flash
+LLM_TIMEOUT_SECONDS=30
 ```
 
 ---
@@ -57,10 +63,13 @@ Open your browser and navigate to:
 
 ---
 
-## 🤖 How YOLO Model Download & Loading Works
-1. On the very first run (when `AI_MODE=real`), Ultralytics automatically downloads the lightweight `yolo11n.pt` model weights (~6 MB) if not already present.
-2. The model is loaded into memory **once** when the detector initializes.
-3. Every `POST /api/scan` request reuses this instance without re-downloading or re-loading weights.
+## 🤖 How RF-DETR & Hybrid Vision AI Work
+1. **RF-DETR Model Loading**: On startup, `RTDETR('rtdetr-l.pt')` is loaded into memory **once** as a pre-initialized singleton to serve fast object detection without per-request latency.
+2. **Quality Pre-Checker**: Evaluates resolution, file size, extreme dark/glare lighting, and blurriness.
+3. **Confidence Evaluation**:
+   - `Confidence >= 0.80`: Accepted directly as RF-DETR high confidence detection.
+   - `0.50 <= Confidence < 0.80`: Triggers Multimodal Vision AI verification (Gemini 1.5 / OpenAI Vision).
+   - `Confidence < 0.50`: Handled as uncertain object safeguard.
 
 ---
 
@@ -68,3 +77,4 @@ Open your browser and navigate to:
 ```bash
 pytest
 ```
+Runs 25 automated unit and endpoint tests.

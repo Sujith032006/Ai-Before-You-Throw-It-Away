@@ -1,7 +1,7 @@
 # 🏗️ Before You Throw It Away — System Architecture
 
 ## Overview
-"Before You Throw It Away" is a full-stack AI reuse assistant. It empowers users to scan household items using computer vision (YOLO), ranks reuse ideas using a deterministic recommendation engine, personalizes step-by-step instructions using Generative AI, tracks completion, and visualizes impact metrics in a user dashboard backed by database persistence.
+"Before You Throw It Away" is a full-stack AI reuse assistant. It empowers users to scan household items using computer vision (RF-DETR Transformer + Multimodal Vision AI), ranks reuse ideas using a deterministic recommendation engine, personalizes step-by-step instructions using Generative AI, tracks completion, and visualizes impact metrics in a user dashboard backed by database persistence.
 
 ---
 
@@ -23,8 +23,8 @@
           ┌───────────────┼────────────────┐
           │               │                │
           ▼               ▼                ▼
-       YOLO          Recommendation       LLM
-  (Ultralytics)          Engine         (Service)
+       RF-DETR      Recommendation       LLM
+   (rtdetr-l.pt)        Engine        (Vision AI)
           │               │                │
           └───────────────┼────────────────┘
                           │
@@ -56,8 +56,8 @@
 
 ## 📡 API Reference
 
-### Scan & Detection
-- `POST /api/scan`: Upload image, run YOLO object detection, persist scan & detection record.
+### Scan & Analyze
+- `POST /api/analyze` & `POST /api/scan`: Upload image, run image quality pre-checker, RF-DETR Transformer detection, confidence evaluation, Multimodal Vision AI verification, and persist scan & detection record.
 
 ### Recommendations
 - `POST /api/recommendations`: Submit user context (goal, tools, materials, budget, time, difficulty). Compute & persist ranked recommendations.

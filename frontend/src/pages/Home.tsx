@@ -60,7 +60,7 @@ export default function Home() {
             </div>
             <div>
               <h3 className="font-bold text-gray-900 text-sm">Scan Household Item</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Use your device camera or upload a photo for instant computer vision YOLO detection.</p>
+              <p className="text-xs text-gray-500 mt-0.5">Use your device camera or upload a photo for instant computer vision RF-DETR object detection.</p>
             </div>
           </div>
 

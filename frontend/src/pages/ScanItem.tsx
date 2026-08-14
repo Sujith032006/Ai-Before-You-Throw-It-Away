@@ -128,8 +128,8 @@ export default function ScanItem() {
             {isAnalyzing && (
               <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center z-20 p-6 text-center">
                 <div className="w-16 h-16 border-4 border-emerald-500/20 border-t-emerald-400 rounded-full animate-spin mb-4"></div>
-                <p className="text-emerald-400 font-black text-xl mb-1">Running YOLO Computer Vision...</p>
-                <p className="text-slate-400 text-xs max-w-xs">Classifying bounding box and object confidence...</p>
+                <p className="text-emerald-400 font-black text-xl mb-1">Running RF-DETR + Vision AI Analysis...</p>
+                <p className="text-slate-400 text-xs max-w-xs">Classifying object with RF-DETR Transformer Engine...</p>
               </div>
             )}
 
