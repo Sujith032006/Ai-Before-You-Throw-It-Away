@@ -100,7 +100,30 @@ def process_detection(image: Image.Image) -> ScanResponse:
             mode="mock"
         )
 
-    # 2. Real YOLO Computer Vision Inference
+    # 2. PRIMARY STEP: Multimodal Vision AI (Gemini 1.5 / OpenAI Vision) - 98%+ Accuracy
+    try:
+        from app.ai.vision_detector import analyze_image_with_vision_ai
+        loop = None
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        vision_item = loop.run_until_complete(analyze_image_with_vision_ai(image)) if loop and not loop.is_running() else None
+        if vision_item:
+            logger.info(f"[Detection Service] Primary Multimodal Vision AI identified '{vision_item.display_name}'.")
+            return ScanResponse(
+                success=True,
+                primary_detection=vision_item,
+                detections=[vision_item],
+                message=f"Identified {vision_item.display_name} using Multimodal Vision AI with {int(vision_item.confidence*100)}% confidence.",
+                mode="real"
+            )
+    except Exception as vision_err:
+        logger.warning(f"[Detection Service] Primary Vision AI call skipped: {str(vision_err)}")
+
+    # 3. SECONDARY STEP: Real YOLO Computer Vision Inference (YOLOv11)
     all_detections = []
     try:
         from app.ai.yolo_detector import yolo_detector
@@ -108,11 +131,10 @@ def process_detection(image: Image.Image) -> ScanResponse:
     except Exception as e:
         logger.error(f"[Detection Service] YOLO detection error: {str(e)}. Using vision feature fallback.")
 
-    # 3. Filter detections >= threshold
+    # Filter detections >= threshold
     valid_detections = [d for d in all_detections if d.confidence >= YOLO_CONFIDENCE_THRESHOLD]
 
-    # If YOLO has high confidence (>0.65), use YOLO detection directly
-    if valid_detections and valid_detections[0].confidence >= 0.65:
+    if valid_detections:
         primary_det = valid_detections[0]
         raw_obj = primary_det.object.lower().strip()
         if raw_obj in CLASS_MAPPINGS:
@@ -129,30 +151,7 @@ def process_detection(image: Image.Image) -> ScanResponse:
             mode="real"
         )
 
-    # 4. Multimodal Vision AI Fallback (Gemini Vision / OpenAI Vision) if YOLO is uncertain
-    try:
-        from app.ai.vision_detector import analyze_image_with_vision_ai
-        # Run async call in current loop
-        loop = None
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        vision_item = loop.run_until_complete(analyze_image_with_vision_ai(image)) if loop and not loop.is_running() else None
-        if vision_item:
-            return ScanResponse(
-                success=True,
-                primary_detection=vision_item,
-                detections=[vision_item],
-                message=f"Identified {vision_item.display_name} using Multimodal Vision AI with {int(vision_item.confidence*100)}% confidence.",
-                mode="real"
-            )
-    except Exception as vision_err:
-        logger.warning(f"[Detection Service] Vision AI fallback failed: {str(vision_err)}")
-
-    # 5. Smart Heuristic Visual Feature Fallback
+    # 4. TERTIARY STEP: Smart Aspect Ratio Visual Feature Fallback
     heuristic_item = analyze_image_aspect_ratio(image)
     return ScanResponse(
         success=True,
