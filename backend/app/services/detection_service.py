@@ -304,7 +304,7 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
             asyncio.set_event_loop(loop)
 
         if loop and not loop.is_running():
-            vision_raw_data = loop.run_until_complete(analyze_image_with_vision_ai(cropped_img))
+            vision_raw_data = loop.run_until_complete(analyze_image_with_vision_ai(image))
     except Exception as vision_err:
         logger.warning(f"[Detection Service] Gemini Vision AI call error: {str(vision_err)}")
 
