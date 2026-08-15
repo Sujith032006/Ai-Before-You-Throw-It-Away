@@ -16,7 +16,7 @@ async def scan_item(file: UploadFile = File(...)):
     # 1. Validate & load PIL Image
     pil_image = validate_and_load_image(file_bytes, content_type)
     
-    # 2. Process image with RF-DETR + Vision AI Hybrid Analyzer
+    # 2. Process image with Stage 1 Object Identification + Stage 2 Support Lookup
     response = process_detection(pil_image, file_size_bytes=file_size)
     
     # 3. Persist scan and detection record if valid detection exists

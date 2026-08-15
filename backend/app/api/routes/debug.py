@@ -10,6 +10,7 @@ from app.utils.config import (
 )
 from app.ai.vision_detector import analyze_image_with_vision_ai
 from app.ai.rfdetr_detector import rfdetr_detector
+from app.services.object_identification_service import object_identification_service
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,36 @@ async def get_env_status() -> Dict[str, Any]:
             "LLM_API_KEY_CONFIGURED": bool(LLM_API_KEY and len(LLM_API_KEY) > 5),
             "RFDETR_MODEL": RFDETR_MODEL,
         }
+    }
+
+@router.post("/object-identification", status_code=status.HTTP_200_OK)
+async def debug_object_identification(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Part 11 Test Mode Endpoint for ObjectIdentificationService.
+    """
+    start_time = time.time()
+    try:
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image format: {str(e)}")
+
+    res = await object_identification_service.identify_object(image, len(contents))
+    elapsed_ms = round((time.time() - start_time) * 1000, 2)
+
+    return {
+        "image_received": True,
+        "latency_ms": elapsed_ms,
+        "model_used": VISION_MODEL or LLM_MODEL,
+        "raw_model_result": res.object_name,
+        "normalized_object": res.object_name,
+        "verification_result": res.status,
+        "final_object": res.object_name,
+        "display_name": res.display_name,
+        "confidence": res.confidence,
+        "confidence_level": res.confidence_level,
+        "material": res.material,
+        "condition": res.condition
     }
 
 @router.post("/analyzer", status_code=status.HTTP_200_OK)
