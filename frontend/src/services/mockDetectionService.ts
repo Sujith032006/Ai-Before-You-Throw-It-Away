@@ -28,16 +28,14 @@ export async function analyzeImage(imageSrc: string): Promise<DetectionResult> {
         return;
       }
 
-      const selected = AVAILABLE_OBJECTS[0];
-
       resolve({
-        object: selected.object,
-        displayName: selected.displayName,
-        supported: true,
-        confidence: 0.90,
-        confidenceText: 'HIGH Confidence',
-        material: selected.material,
-        category: selected.category,
+        object: 'unknown',
+        displayName: 'Unknown Object',
+        supported: false,
+        confidence: 0.0,
+        confidenceText: 'NONE',
+        material: 'unknown',
+        category: 'Household Object',
         image: imageSrc,
       });
     }, 1200);

@@ -38,9 +38,9 @@ class AnalyzerResult(BaseModel):
     supported: bool = False
     confidence: float = 0.0
     confidence_level: str = "none"  # "high", "medium", "low", "none"
-    source: str = "hybrid"  # "rf_detr", "vision_ai", "hybrid", "quality_check"
-    status: str = "ambiguous"  # "identified", "identified_but_unsupported", "multiple_objects", "ambiguous", "poor_image_quality"
-    verification: str = "consistent"  # "consistent", "conflict_resolved", "vision_ai_primary", "rf_detr_primary", "conflict_unresolved"
+    source: str = "ollama_qwen3_vl"
+    status: str = "ambiguous"
+    verification: str = "consistent"
     bbox: Optional[BBoxNormalized] = None
     detected_objects: List[NormalizedObject] = []
     suggestions: List[str] = []
@@ -53,4 +53,5 @@ class ScanResponse(BaseModel):
     primary_detection: Optional[DetectionItem] = None
     detections: List[DetectionItem] = []
     message: Optional[str] = None
-    mode: str = "hybrid"
+    mode: str = "ollama_qwen3_vl"
+    debug: Optional[Dict[str, Any]] = None

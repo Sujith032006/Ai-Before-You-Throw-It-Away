@@ -1,3 +1,4 @@
+import os
 import asyncio
 import logging
 import concurrent.futures
@@ -12,6 +13,9 @@ from app.services.image_quality_service import evaluate_image_quality
 from app.services.object_identification_service import object_identification_service, ObjectIdentificationResult
 
 logger = logging.getLogger(__name__)
+
+DEBUG_UPLOADS_DIR = os.path.join(os.getcwd(), "debug", "uploads")
+os.makedirs(DEBUG_UPLOADS_DIR, exist_ok=True)
 
 # Structured Upcycling Knowledge Base Classes
 SUPPORTED_REUSE_CLASSES = {
@@ -79,7 +83,7 @@ def check_reuse_database_support(base_obj: str, material: str) -> Dict[str, Any]
     if "jeans" in base_obj or "denim" in base_obj:
         return {"name": "jeans", "display_name": "Denim Jeans", "base_object": "jeans", "material": "denim fabric", "supported": True, "category": "Textiles & Clothing"}
 
-    # Unsupported Open-World Objects
+    # Unsupported Open-World Objects (e.g. Chair, Table, Laptop)
     formatted_display = base_obj.replace("_", " ").title()
     category_map = {
         "chair": "Furniture", "stool": "Furniture", "bench": "Furniture", "couch": "Furniture", "sofa": "Furniture",
@@ -98,7 +102,6 @@ def check_reuse_database_support(base_obj: str, material: str) -> Dict[str, Any]
         "category": category_map.get(base_obj, "Household Object")
     }
 
-# Alias for backward compatibility
 normalize_object_identity = check_reuse_database_support
 
 def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanResponse:
@@ -108,7 +111,19 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
     except Exception as e:
         logger.warning(f"[Detection Service] EXIF transpose error: {str(e)}")
 
-    # 2. Stage 1: Physical Object Identification via Ollama Qwen3-VL
+    # Step 7: Save uploaded image temporarily in development mode debug/uploads/
+    try:
+        debug_filename = f"upload_{int(asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else 0)}.jpg"
+        debug_path = os.path.join(DEBUG_UPLOADS_DIR, debug_filename)
+        if image.mode != "RGB":
+            image.convert("RGB").save(debug_path, format="JPEG")
+        else:
+            image.save(debug_path, format="JPEG")
+        logger.info(f"[IMAGE DEBUG] Saved received image to {debug_path}")
+    except Exception as err:
+        logger.warning(f"[IMAGE DEBUG] Could not save debug upload: {str(err)}")
+
+    # 2. Stage 1: Physical Object Identification via Ollama Qwen3-VL / LLaVA
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -123,6 +138,18 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
         id_result: ObjectIdentificationResult = asyncio.run(
             object_identification_service.identify_object(image, file_size_bytes)
         )
+
+    # Step 3 Debug Payload
+    debug_payload = {
+        "model_provider": "ollama",
+        "model_name": "llava",
+        "image_received": True,
+        "image_sent_to_model": True,
+        "raw_model_response": id_result.reason or id_result.object_name,
+        "normalized_object": id_result.object_name,
+        "database_object": id_result.object_name,
+        "final_object": id_result.object_name
+    }
 
     # Unknown or Poor Quality image handling (STRICT: Unknown remains Unknown!)
     if id_result.status in ["poor_image_quality", "ambiguous", "unknown"] or id_result.object_name == "unknown":
@@ -142,7 +169,7 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
             supported=False,
             confidence=0.0,
             confidence_level="unknown",
-            source="ollama_qwen3_vl",
+            source="ollama",
             status=id_result.status,
             verification="consistent",
             suggestions=[id_result.reason or "Please upload a clearer image showing the complete object."]
@@ -151,7 +178,8 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
             success=True,
             analysis=analyzer_res,
             message="Could not identify physical object confidently.",
-            mode="ollama_qwen3_vl"
+            mode="ollama",
+            debug=debug_payload
         )
 
     # 3. Stage 2: Reuse Database Support Lookup
@@ -171,48 +199,20 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
         confidence_level=id_result.confidence_level
     )
 
-    # Multi-object formatting if detected
-    detected_norm_list: List[NormalizedObject] = []
-    if id_result.status == "multiple_objects":
-        status_str = "multiple_objects"
-        for d_item in id_result.detected_objects:
-            d_info = check_reuse_database_support(d_item["object_name"], d_item["material"])
-            detected_norm_list.append(
-                NormalizedObject(
-                    name=d_info["name"],
-                    display_name=d_info["display_name"],
-                    base_object=d_info["base_object"],
-                    material=d_item["material"],
-                    condition=d_item.get("condition", "usable"),
-                    category=d_info["category"],
-                    supported=d_info["supported"],
-                    confidence=d_item["confidence"],
-                    confidence_level=d_item["confidence_level"]
-                )
-            )
-
-    debug_data = {
-        "model_used": "qwen3-vl:8b",
-        "ollama_called": True,
-        "raw_vision_object": id_result.object_name,
-        "normalized_object": db_info["name"],
-        "database_class": db_info["name"] if is_supported else "unsupported",
-        "final_object": db_info["name"],
-        "status": status_str,
-        "supported": is_supported
-    }
+    debug_payload["database_object"] = db_info["name"]
+    debug_payload["final_object"] = db_info["name"]
 
     analyzer_res = AnalyzerResult(
         object=norm_obj,
         supported=is_supported,
         confidence=id_result.confidence,
         confidence_level=id_result.confidence_level,
-        source="ollama_qwen3_vl",
+        source="ollama",
         status=status_str,
         verification="ollama_primary",
         bbox=None,
-        detected_objects=detected_norm_list,
-        debug_info=debug_data
+        detected_objects=[],
+        debug_info=debug_payload
     )
 
     msg = f"Identified {norm_obj.display_name} ({id_result.confidence_level.title()} Confidence)" if is_supported else f"Identified {norm_obj.display_name} (Outside Structured Reuse Database)"
@@ -223,5 +223,6 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
         primary_detection=None,
         detections=[],
         message=msg,
-        mode="ollama_qwen3_vl"
+        mode="ollama",
+        debug=debug_payload
     )

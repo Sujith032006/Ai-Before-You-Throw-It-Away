@@ -30,18 +30,18 @@ export default function DetectionResult() {
   const [generalIdeas, setGeneralIdeas] = useState<string[] | null>(null);
   const [isLoadingIdeas, setIsLoadingIdeas] = useState(false);
 
-  // Default fallback item if direct navigate
+  // Default fallback item if direct navigate without photo
   const currentResult = detectionResult || {
-    object: 'plastic_bottle',
-    displayName: 'Plastic Bottle',
-    supported: true,
-    confidence: 0.94,
-    confidenceText: 'HIGH Confidence',
-    confidenceLevel: 'high',
-    material: 'Plastic (PET)',
-    category: 'Household Container',
-    source: 'rf_detr',
-    status: 'identified',
+    object: 'unknown',
+    displayName: 'Unknown Object',
+    supported: false,
+    confidence: 0.0,
+    confidenceText: 'NONE',
+    confidenceLevel: 'unknown',
+    material: 'unknown',
+    category: 'Household Object',
+    source: 'ollama',
+    status: 'unknown',
     verification: 'consistent'
   };
 
