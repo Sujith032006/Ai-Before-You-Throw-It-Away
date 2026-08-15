@@ -194,7 +194,6 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
     debug_data = {
         "model_used": "qwen3-vl:8b",
         "ollama_called": True,
-        "rfdetr_called": False,
         "raw_vision_object": id_result.object_name,
         "normalized_object": db_info["name"],
         "database_class": db_info["name"] if is_supported else "unsupported",
