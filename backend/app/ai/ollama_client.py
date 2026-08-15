@@ -20,8 +20,8 @@ def convert_pil_to_base64(image: Image.Image) -> str:
 
 class OllamaClient:
     """
-    Sole Ollama API Client for Qwen3-VL Vision Model.
-    Handles connection verification, Base64 image payload, JSON parsing, and error recovery.
+    Sole Ollama API Client for LLaVA Vision Model.
+    Handles connection verification, Base64 image payload, JSON parsing, development logging, and error recovery.
     """
 
     def __init__(self, base_url: str = OLLAMA_BASE_URL, model: str = OLLAMA_MODEL):
@@ -44,7 +44,8 @@ class OllamaClient:
                     return {
                         "provider": "ollama",
                         "model": self.model,
-                        "status": "ready" if model_found else "model_not_found"
+                        "status": "ready" if model_found else "model_not_found",
+                        "available_models": models
                     }
         except Exception as e:
             logger.info(f"[Ollama Client] Ollama server health check unreachable: {str(e)}")
@@ -57,9 +58,21 @@ class OllamaClient:
 
     async def generate_vision_response(self, prompt: str, image: Image.Image) -> Optional[Dict[str, Any]]:
         """
-        Sends image base64 + vision prompt directly to Ollama Qwen3-VL.
+        Sends image base64 + vision prompt directly to Ollama LLaVA.
+        Logs development metadata: image_received, image_width, image_height, image_format, model_name, image_sent_to_ollama.
         """
         img_b64 = convert_pil_to_base64(image)
+        img_w, img_h = image.size
+        img_fmt = image.format or "JPEG"
+
+        # Section 3: Development Logging
+        logger.info(f"--- OLLAMA VISION REQUEST ---")
+        logger.info(f"model_name: {self.model}")
+        logger.info(f"image_received: True")
+        logger.info(f"image_format: {img_fmt}")
+        logger.info(f"image_width: {img_w}")
+        logger.info(f"image_height: {img_h}")
+        logger.info(f"image_sent_to_ollama: True")
 
         payload = {
             "model": self.model,
@@ -79,6 +92,7 @@ class OllamaClient:
                 data = res.json()
                 raw_response = data.get("response", "").strip()
 
+                logger.info(f"raw_model_response: {raw_response[:200]}")
                 return self._parse_json_safely(raw_response)
         except httpx.TimeoutException:
             logger.warning(f"[Ollama Client] Timeout connecting to {self.generate_url}")

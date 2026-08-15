@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, CheckCircle2, XCircle, Activity, ShieldCheck, Cpu, Database, RefreshCw, AlertCircle } from 'lucide-react';
+import { Play, CheckCircle2, XCircle, Activity, ShieldCheck, Cpu, RefreshCw, AlertCircle, Clock } from 'lucide-react';
 import { API_BASE_URL } from '../services/config';
 
 export default function TestSuite() {
@@ -13,12 +13,12 @@ export default function TestSuite() {
     setError(null);
     try {
       // 1. Fetch API Health
-      const healthRes = await fetch(`${API_BASE_URL}/api/health`);
+      const healthRes = await fetch(`${API_BASE_URL}/api/analyzer/health`);
       if (healthRes.ok) {
         setHealth(await healthRes.json());
       }
 
-      // 2. Fetch Evaluation Metrics & Test Matrix
+      // 2. Fetch Evaluation Metrics, Confusion Matrix, & Test Matrix
       const evalRes = await fetch(`${API_BASE_URL}/api/debug/evaluate`);
       if (evalRes.ok) {
         setEvaluationData(await evalRes.json());
@@ -35,6 +35,7 @@ export default function TestSuite() {
   }, []);
 
   const metrics = evaluationData?.metrics;
+  const performance = evaluationData?.performance;
   const testResults = evaluationData?.test_results || [];
 
   return (
@@ -46,10 +47,10 @@ export default function TestSuite() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/90 rounded-3xl p-6 border border-slate-800 shadow-xl">
           <div>
             <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider w-fit mb-2">
-              <ShieldCheck size={14} /> System Validation Suite
+              <ShieldCheck size={14} /> Stage 6 Real Ollama LLaVA Evaluation
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white">Academic Test & Evaluation Center</h1>
-            <p className="text-slate-400 text-xs sm:text-sm mt-1">Live empirical metrics and regression test suite across 20 object categories.</p>
+            <p className="text-slate-400 text-xs sm:text-sm mt-1">Empirical evaluation metrics, confusion matrix, and chair regression test across 20 object categories.</p>
           </div>
 
           <button
@@ -68,26 +69,29 @@ export default function TestSuite() {
           </div>
         )}
 
-        {/* Section 1: API Health Status */}
+        {/* Section 1: Ollama LLaVA Health Status */}
         <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 shadow-xl space-y-4">
           <h2 className="text-base font-extrabold text-white flex items-center gap-2">
-            <Activity size={18} className="text-emerald-400" /> API Health Status
+            <Activity size={18} className="text-emerald-400" /> Ollama LLaVA Status
           </h2>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {[
-              { label: 'Overall System', val: health?.status || 'checking', icon: ShieldCheck },
-              { label: 'Backend Server', val: health?.services?.backend || 'ok', icon: Cpu },
-              { label: 'Vision AI', val: health?.services?.vision || 'ok', icon: Activity },
-              { label: 'Recommendation AI', val: health?.services?.recommendation_ai || 'ok', icon: Activity },
-              { label: 'Database', val: health?.services?.database || 'ok', icon: Database },
-            ].map((srv, idx) => (
-              <div key={idx} className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 text-center">
-                <srv.icon size={18} className="mx-auto text-emerald-400 mb-1" />
-                <span className="text-[11px] font-bold text-slate-400 block">{srv.label}</span>
-                <span className="text-xs font-black text-emerald-400 capitalize">{srv.val}</span>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 text-center">
+              <span className="text-[11px] font-bold text-slate-400 block">AI Provider</span>
+              <span className="text-xs font-black text-emerald-400 uppercase">{health?.provider || 'ollama'}</span>
+            </div>
+            <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 text-center">
+              <span className="text-[11px] font-bold text-slate-400 block">Vision Model</span>
+              <span className="text-xs font-black text-teal-400 uppercase">{health?.model || 'llava'}</span>
+            </div>
+            <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 text-center">
+              <span className="text-[11px] font-bold text-slate-400 block">Server Endpoint</span>
+              <span className="text-xs font-black text-blue-400">http://localhost:11434</span>
+            </div>
+            <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 text-center">
+              <span className="text-[11px] font-bold text-slate-400 block">Status</span>
+              <span className="text-xs font-black text-emerald-400 capitalize">{health?.status || 'ready'}</span>
+            </div>
           </div>
         </div>
 
@@ -121,7 +125,30 @@ export default function TestSuite() {
           </div>
         )}
 
-        {/* Section 3: Regression Test Alert */}
+        {/* Section 3: Performance Benchmark Latency Cards */}
+        {performance && (
+          <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 shadow-xl space-y-3">
+            <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+              <Clock size={18} className="text-amber-400" /> Local Vision AI Performance Benchmarks
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center">
+                <span className="text-xs font-bold text-slate-400 block">Min Latency</span>
+                <span className="text-lg font-black text-emerald-400">{performance.min_latency_ms} ms</span>
+              </div>
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center">
+                <span className="text-xs font-bold text-slate-400 block">Avg Latency</span>
+                <span className="text-lg font-black text-teal-400">{performance.avg_latency_ms} ms</span>
+              </div>
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center">
+                <span className="text-xs font-bold text-slate-400 block">Max Latency</span>
+                <span className="text-lg font-black text-blue-400">{performance.max_latency_ms} ms</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Section 4: Regression Test Alert */}
         <div className="bg-emerald-950/30 border border-emerald-500/30 p-4 rounded-2xl flex items-center justify-between">
           <div className="flex items-center gap-3">
             <CheckCircle2 size={24} className="text-emerald-400 flex-shrink-0" />
@@ -135,7 +162,7 @@ export default function TestSuite() {
           </span>
         </div>
 
-        {/* Section 4: 20 Object Category Matrix Table */}
+        {/* Section 5: 20 Object Category Matrix Table */}
         <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 shadow-xl space-y-4">
           <h2 className="text-base font-extrabold text-white flex items-center gap-2">
             <Cpu size={18} className="text-blue-400" /> 20-Object Category Test Matrix
