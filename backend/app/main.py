@@ -1,13 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.utils.config import FRONTEND_URLS, LLM_MODE
-from app.api.routes import scan, recommendations, ai, dashboard, history
+from app.api.routes import scan, recommendations, ai, dashboard, history, debug
 from app.database.seed import init_db
 from app.database.session import engine
 
 app = FastAPI(
     title="Before You Throw It Away - AI Reuse Backend",
-    description="Computer vision object detection, deterministic recommendations & generative AI personalized guide backend using FastAPI",
+    description="Two-Stage Computer vision object detection, deterministic recommendations & generative AI personalized guide backend using FastAPI",
     version="1.0.0"
 )
 
@@ -36,6 +36,7 @@ app.include_router(recommendations.router)
 app.include_router(ai.router)
 app.include_router(dashboard.router)
 app.include_router(history.router)
+app.include_router(debug.router)
 
 @app.get("/api/health", tags=["Health"])
 async def health_check():
