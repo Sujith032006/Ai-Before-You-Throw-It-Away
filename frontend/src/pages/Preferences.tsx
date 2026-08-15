@@ -1,20 +1,21 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, Wrench, IndianRupee, Hammer, Sparkles, Layers, Clock, AlertCircle, ArrowLeft, Plus, Check, RotateCcw } from 'lucide-react';
+import { Settings, Wrench, IndianRupee, Hammer, Sparkles, Layers, Clock, AlertCircle, ArrowLeft, Plus, Check, RotateCcw, X } from 'lucide-react';
 import { useScan } from '../context/ScanContext';
 import { fetchRecommendations } from '../services/recommendationService';
 import type { RecommendationRequest } from '../types/recommendation';
 
-const GOAL_OPTIONS = [
+const DEFAULT_GOAL_OPTIONS = [
   { label: 'Gardening', key: 'gardening' },
   { label: 'Storage', key: 'storage' },
   { label: 'Decoration', key: 'decoration' },
   { label: 'Useful Item', key: 'useful_item' },
+  { label: 'Furniture', key: 'furniture' },
   { label: 'Surprise Me', key: 'surprise_me' }
 ];
 
-const TOOL_OPTIONS = ['Scissors', 'Glue', 'Cutter', 'Wire', 'Paint', 'Drill', 'Hammer'];
-const MATERIAL_OPTIONS = ['Soil', 'Cotton', 'String', 'Fabric', 'Cardboard', 'Paper'];
+const DEFAULT_TOOL_OPTIONS = ['Scissors', 'Glue', 'Cutter', 'Wire', 'Paint', 'Drill', 'Hammer'];
+const DEFAULT_MATERIAL_OPTIONS = ['Soil', 'Cotton', 'String', 'Fabric', 'Cardboard', 'Paper'];
 
 export default function Preferences() {
   const navigate = useNavigate();
@@ -26,6 +27,15 @@ export default function Preferences() {
 
   const currentObject = detectionResult?.object || 'bottle';
   const objectDisplayName = detectionResult?.displayName || 'Scanned Item';
+
+  // Custom options state
+  const [customGoalsList, setCustomGoalsList] = useState<Array<{ label: string; key: string }>>([]);
+  const [customToolsList, setCustomToolsList] = useState<string[]>([]);
+  const [customMaterialsList, setCustomMaterialsList] = useState<string[]>([]);
+
+  // Modal input states
+  const [activeModal, setActiveModal] = useState<'goal' | 'tool' | 'material' | null>(null);
+  const [modalInputValue, setModalInputValue] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -58,6 +68,40 @@ export default function Preferences() {
     }
   };
 
+  const handleAddCustomItem = () => {
+    const val = modalInputValue.trim();
+    if (!val) return;
+
+    if (activeModal === 'goal') {
+      const k = val.toLowerCase().replace(/\s+/g, '_');
+      if (!customGoalsList.some(g => g.key === k)) {
+        setCustomGoalsList([...customGoalsList, { label: val, key: k }]);
+      }
+      if (!goals.includes(k)) {
+        setGoals([...goals, k]);
+      }
+    } else if (activeModal === 'tool') {
+      const tLower = val.toLowerCase();
+      if (!customToolsList.includes(val)) {
+        setCustomToolsList([...customToolsList, val]);
+      }
+      if (!tools.includes(tLower)) {
+        setTools([...tools, tLower]);
+      }
+    } else if (activeModal === 'material') {
+      const mLower = val.toLowerCase();
+      if (!customMaterialsList.includes(val)) {
+        setCustomMaterialsList([...customMaterialsList, val]);
+      }
+      if (!materials.includes(mLower)) {
+        setMaterials([...materials, mLower]);
+      }
+    }
+
+    setModalInputValue('');
+    setActiveModal(null);
+  };
+
   const handleFindProjects = async () => {
     setIsLoading(true);
     setErrorMessage(null);
@@ -78,13 +122,23 @@ export default function Preferences() {
 
     const payload: RecommendationRequest = {
       object_name: currentObject,
+      object: {
+        object_name: currentObject,
+        display_name: objectDisplayName,
+        material: detectionResult?.material || 'unknown',
+        condition: 'used',
+        confidence: detectionResult?.confidence || 0.95
+      },
       goal: goals.length > 0 ? goals[0] : 'gardening',
+      custom_goal: goals.length > 0 ? goals[goals.length - 1] : undefined,
       tools: tools,
       materials: materials,
       budget_min: budgetMin,
       budget_max: budgetMax,
+      budget: { min: budgetMin, max: budgetMax, currency: 'INR' },
       difficulty: difficulty.toLowerCase(),
-      max_time_minutes: maxTimeMins
+      max_time_minutes: maxTimeMins,
+      time_minutes: maxTimeMins
     };
 
     try {
@@ -100,8 +154,58 @@ export default function Preferences() {
   };
 
   return (
-    <div className="w-full flex-1 bg-slate-950 text-slate-100 pb-20">
+    <div className="w-full flex-1 bg-slate-950 text-slate-100 pb-20 relative">
       
+      {/* Custom Add Modal Dialog */}
+      {activeModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-extrabold text-white text-base capitalize">
+                ＋ Add Custom {activeModal}
+              </h3>
+              <button 
+                onClick={() => { setActiveModal(null); setModalInputValue(''); }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-800/50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              {activeModal === 'goal' && 'Enter a specific project goal (e.g., "Something for my bedroom", "Pet house").'}
+              {activeModal === 'tool' && 'Enter another tool you have (e.g., "Screwdriver", "Sandpaper", "Saw").'}
+              {activeModal === 'material' && 'Enter custom material on hand (e.g., "Wood", "Rope", "Old cloth", "Bottle caps").'}
+            </p>
+
+            <input
+              type="text"
+              value={modalInputValue}
+              onChange={(e) => setModalInputValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddCustomItem(); }}
+              placeholder={activeModal === 'goal' ? 'e.g. Something for college' : activeModal === 'tool' ? 'e.g. Screwdriver' : 'e.g. Rope'}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
+              autoFocus
+            />
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                onClick={() => { setActiveModal(null); setModalInputValue(''); }}
+                className="px-4 py-2 bg-slate-800 text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddCustomItem}
+                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-md"
+              >
+                Add {activeModal.toUpperCase()}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Loading Overlay */}
       {isLoading && (
         <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center">
@@ -122,7 +226,7 @@ export default function Preferences() {
               Upcycling {objectDisplayName}
             </span>
             <h1 className="text-2xl sm:text-3xl font-black text-white mt-2 mb-1">Customize Your Preferences</h1>
-            <p className="text-slate-400 text-xs sm:text-sm">Tap the ＋ icons to add multiple goals, tools, and materials to your request.</p>
+            <p className="text-slate-400 text-xs sm:text-sm">Tap the ＋ icons to add custom goals, tools, and materials to your request.</p>
           </div>
 
           <button 
@@ -153,7 +257,7 @@ export default function Preferences() {
               </span>
             </div>
             <div className="flex flex-wrap gap-2.5">
-              {GOAL_OPTIONS.map(g => {
+              {[...DEFAULT_GOAL_OPTIONS, ...customGoalsList].map(g => {
                 const isSelected = goals.includes(g.key);
                 return (
                   <button
@@ -170,6 +274,14 @@ export default function Preferences() {
                   </button>
                 );
               })}
+
+              <button
+                onClick={() => setActiveModal('goal')}
+                className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-400 border border-dashed border-emerald-500/40 transition-all flex items-center gap-1.5"
+              >
+                <Plus size={15} className="text-emerald-400" />
+                <span>Custom Goal</span>
+              </button>
             </div>
           </div>
 
@@ -194,7 +306,7 @@ export default function Preferences() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2.5">
-              {TOOL_OPTIONS.map(tool => {
+              {[...DEFAULT_TOOL_OPTIONS, ...customToolsList].map(tool => {
                 const tLower = tool.toLowerCase();
                 const isSelected = tools.includes(tLower);
                 return (
@@ -212,6 +324,14 @@ export default function Preferences() {
                   </button>
                 );
               })}
+
+              <button
+                onClick={() => setActiveModal('tool')}
+                className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-blue-950/60 hover:bg-blue-900/80 text-blue-400 border border-dashed border-blue-500/40 transition-all flex items-center gap-1.5"
+              >
+                <Plus size={15} className="text-blue-400" />
+                <span>Custom Tool</span>
+              </button>
             </div>
           </div>
 
@@ -236,7 +356,7 @@ export default function Preferences() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2.5">
-              {MATERIAL_OPTIONS.map(mat => {
+              {[...DEFAULT_MATERIAL_OPTIONS, ...customMaterialsList].map(mat => {
                 const mLower = mat.toLowerCase();
                 const isSelected = materials.includes(mLower);
                 return (
@@ -254,6 +374,14 @@ export default function Preferences() {
                   </button>
                 );
               })}
+
+              <button
+                onClick={() => setActiveModal('material')}
+                className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-teal-950/60 hover:bg-teal-900/80 text-teal-400 border border-dashed border-teal-500/40 transition-all flex items-center gap-1.5"
+              >
+                <Plus size={15} className="text-teal-400" />
+                <span>Custom Material</span>
+              </button>
             </div>
           </div>
 
