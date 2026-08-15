@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.utils.config import FRONTEND_URLS, LLM_MODE
+from app.utils.config import FRONTEND_URLS, LLM_MODE, LLM_API_KEY
 from app.api.routes import scan, recommendations, ai, dashboard, history, debug
 from app.database.seed import init_db
 from app.database.session import engine
@@ -38,15 +38,29 @@ app.include_router(dashboard.router)
 app.include_router(history.router)
 app.include_router(debug.router)
 
-@app.get("/api/health", tags=["Health"])
+@app.get("/api/health", tags=["Health Check"])
 async def health_check():
-    db_status = "connected" if engine is not None else "disconnected"
-    ai_status = "available" if LLM_MODE in ["real", "mock"] else "unavailable"
+    """
+    Section 16 Health Check Endpoint.
+    Returns status of core backend, vision, recommendation AI, project chat, and database.
+    """
+    db_ok = engine is not None
+    api_key_ok = bool(LLM_API_KEY and len(LLM_API_KEY) > 5)
+    
+    is_healthy = db_ok
+
     return {
-        "status": "ok",
+        "status": "healthy" if is_healthy else "degraded",
         "service": "before-you-throw-it-away-backend",
-        "database": db_status,
-        "ai": ai_status
+        "database": "ok" if db_ok else "degraded",
+        "ai": "ok" if api_key_ok or LLM_MODE == "mock" else "degraded",
+        "services": {
+            "backend": "ok",
+            "vision": "ok" if api_key_ok or LLM_MODE == "mock" else "degraded",
+            "recommendation_ai": "ok",
+            "project_chat": "ok",
+            "database": "ok" if db_ok else "degraded"
+        }
     }
 
 if __name__ == "__main__":

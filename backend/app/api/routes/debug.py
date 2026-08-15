@@ -11,10 +11,19 @@ from app.utils.config import (
 from app.ai.vision_detector import analyze_image_with_vision_ai
 from app.ai.rfdetr_detector import rfdetr_detector
 from app.services.object_identification_service import object_identification_service
+from app.services.evaluation_service import run_evaluation_suite
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/debug", tags=["Dev Debugging Endpoints"])
+
+@router.get("/evaluate", status_code=status.HTTP_200_OK)
+@router.post("/evaluate", status_code=status.HTTP_200_OK)
+async def evaluate_suite() -> Dict[str, Any]:
+    """
+    Section 3 & 4 Automated Evaluation Suite Endpoint across 20 object categories.
+    """
+    return run_evaluation_suite()
 
 @router.get("/env-status", status_code=status.HTTP_200_OK)
 async def get_env_status() -> Dict[str, Any]:

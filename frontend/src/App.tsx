@@ -12,6 +12,8 @@ import ProjectInstructions from './pages/ProjectInstructions';
 import PersonalizedGuide from './pages/PersonalizedGuide';
 import Dashboard from './pages/Dashboard';
 import History from './pages/History';
+import TestSuite from './pages/TestSuite';
+import DemoMode from './pages/DemoMode';
 
 function App() {
   return (
@@ -29,6 +31,8 @@ function App() {
             <Route path="/instructions" element={<ProjectInstructions />} />
             <Route path="/personalized-guide" element={<PersonalizedGuide />} />
             <Route path="/history" element={<History />} />
+            <Route path="/test-suite" element={<TestSuite />} />
+            <Route path="/demo" element={<DemoMode />} />
             <Route path="/project/:id" element={<ProjectInstructions />} />
           </Route>
         </Routes>
