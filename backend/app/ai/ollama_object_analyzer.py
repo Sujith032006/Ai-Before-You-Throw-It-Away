@@ -7,35 +7,48 @@ from app.utils.object_normalization import normalize_object_name, derive_confide
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_VISION_PROMPT = """You are a GENERAL PHYSICAL OBJECT IDENTIFICATION SYSTEM.
+STRICT_OBJECT_IDENTIFICATION_PROMPT = """You are a GENERAL PHYSICAL OBJECT IDENTIFICATION ENGINE.
 
-Your job is to identify what physical object is actually visible in the supplied image.
+Your ONLY job is to identify the real physical object visible in the supplied image.
 
-IMPORTANT RULES:
-1. Identify the real-world physical object.
-2. Do NOT classify the image according to recycling, waste, or packaging categories.
-3. Do NOT use the application's reuse database.
-4. Do NOT force the object into a predefined list.
-5. Do NOT guess when the image is unclear.
-6. If multiple distinct objects are visible, set status="multiple_objects" and list detected_objects.
-7. If the main object cannot be identified confidently, return "unknown".
-8. Prefer a specific common object name.
+Ignore the application's reuse database.
+Ignore recycling categories.
+Ignore upcycling categories.
+Ignore recommendation categories.
+Ignore previous classifications.
+Do not force the image into a predefined reuse class.
+
+Identify the actual physical object.
 
 Examples:
-- Chair -> chair
-- Dining Table -> table
-- Laptop computer -> laptop
-- Smartphone -> smartphone
-- Drinking bottle -> bottle
-- Glass container -> glass jar
-- Cardboard shipping box -> cardboard box
+- chair -> chair
+- plastic chair -> chair
+- office chair -> chair
+- wooden chair -> chair
+- table -> table
+- dining table -> table
+- laptop -> laptop
+- smartphone -> smartphone
+- keyboard -> keyboard
+- mouse -> mouse
+- shoe -> shoe
+- bag -> bag
+- bottle -> bottle
+- glass jar -> glass jar
+- cardboard box -> cardboard box
+- tin can -> tin can
+- lamp -> lamp
 
-CRITICAL REGRESSION RULE:
-If the image contains a CHAIR:
-object_name MUST be "chair"
-It must NEVER become "cardboard_box", "container", or "plastic_waste".
+The material is NOT the object name.
+Example: plastic chair MUST produce:
+object_name = "chair"
+material = "plastic"
 
-If uncertain between objects, set status = "ambiguous".
+CRITICAL RULES:
+1. If the image shows a CHAIR, object_name MUST be "chair". It must NEVER become "cardboard_box", "container", or "bottle".
+2. Do not use the application's database to decide the object name.
+3. If the object is unclear, return status = "unknown" and object_name = "unknown". Never invent an object.
+4. If multiple distinct objects are clearly visible, return status = "multiple_objects" and list them in detected_objects.
 
 Return ONLY valid JSON format:
 {
@@ -44,7 +57,7 @@ Return ONLY valid JSON format:
   "display_name": "Chair",
   "material": "plastic",
   "condition": "used",
-  "confidence": 0.94,
+  "confidence": 0.95,
   "alternatives": [],
   "reason": "The image clearly shows a chair."
 }
@@ -52,15 +65,26 @@ Return ONLY valid JSON format:
 
 class OllamaObjectAnalyzer:
     """
-    Local Vision AI Object Analyzer using Ollama + Qwen3-VL.
-    Independent from recommendation engine and reuse database.
+    Sole Local Vision AI Object Analyzer using Ollama + Qwen3-VL.
+    Single Source of Truth for physical object identification.
     """
 
-    async def analyze_image(self, image: Image.Image) -> Optional[Dict[str, Any]]:
-        raw_res = await ollama_client.generate_vision_response(SYSTEM_VISION_PROMPT, image)
+    async def analyze_image(self, image: Image.Image) -> Dict[str, Any]:
+        raw_res = await ollama_client.generate_vision_response(STRICT_OBJECT_IDENTIFICATION_PROMPT, image)
         if not raw_res or not isinstance(raw_res, dict):
-            logger.info("[Ollama Analyzer] No valid response from local Qwen3-VL model.")
-            return None
+            logger.info("[Ollama Object Analyzer] Ollama returned no valid JSON response. Returning status=unknown.")
+            return {
+                "status": "unknown",
+                "object_name": "unknown",
+                "display_name": "Unknown Object",
+                "material": "unknown",
+                "condition": "unknown",
+                "confidence": 0.0,
+                "confidence_level": "unknown",
+                "alternatives": [],
+                "detected_objects": [],
+                "reason": "Ollama server unreachable or image unparseable."
+            }
 
         status = raw_res.get("status", "identified")
         raw_name = raw_res.get("object_name", "unknown")

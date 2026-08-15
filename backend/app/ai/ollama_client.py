@@ -20,8 +20,8 @@ def convert_pil_to_base64(image: Image.Image) -> str:
 
 class OllamaClient:
     """
-    Dedicated Ollama API Client for Qwen3-VL and Local Vision Models.
-    Handles connection, base64 encoding, JSON parsing, and error recovery.
+    Sole Ollama API Client for Qwen3-VL Vision Model.
+    Handles connection verification, Base64 image payload, JSON parsing, and error recovery.
     """
 
     def __init__(self, base_url: str = OLLAMA_BASE_URL, model: str = OLLAMA_MODEL):
@@ -31,7 +31,10 @@ class OllamaClient:
         self.tags_url = f"{self.base_url}/api/tags"
 
     async def check_health(self) -> Dict[str, Any]:
-        """Checks if Ollama server is reachable and if the requested vision model exists."""
+        """
+        Section 17 Ollama Health Endpoint.
+        Returns provider, model, and status ('ready' | 'unavailable').
+        """
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 res = await client.get(self.tags_url)
@@ -39,24 +42,22 @@ class OllamaClient:
                     models = [m.get("name", "") for m in res.json().get("models", [])]
                     model_found = any(self.model in m for m in models) or len(models) > 0
                     return {
-                        "ollama": "available",
+                        "provider": "ollama",
                         "model": self.model,
-                        "status": "ready" if model_found else "model_not_found",
-                        "available_models": models
+                        "status": "ready" if model_found else "model_not_found"
                     }
         except Exception as e:
-            logger.info(f"[Ollama Client] Server health check unreachable: {str(e)}")
+            logger.info(f"[Ollama Client] Ollama server health check unreachable: {str(e)}")
 
         return {
-            "ollama": "unavailable",
+            "provider": "ollama",
             "model": self.model,
-            "status": "analyzer_unavailable",
-            "available_models": []
+            "status": "unavailable"
         }
 
     async def generate_vision_response(self, prompt: str, image: Image.Image) -> Optional[Dict[str, Any]]:
         """
-        Sends an image + prompt to Ollama Qwen3-VL and parses structured JSON response.
+        Sends image base64 + vision prompt directly to Ollama Qwen3-VL.
         """
         img_b64 = convert_pil_to_base64(image)
 
@@ -78,13 +79,12 @@ class OllamaClient:
                 data = res.json()
                 raw_response = data.get("response", "").strip()
 
-                # Attempt clean JSON parsing
                 return self._parse_json_safely(raw_response)
         except httpx.TimeoutException:
             logger.warning(f"[Ollama Client] Timeout connecting to {self.generate_url}")
             return None
         except Exception as e:
-            logger.info(f"[Ollama Client] Error calling Ollama: {str(e)}")
+            logger.info(f"[Ollama Client] Error communicating with Ollama: {str(e)}")
             return None
 
     def _parse_json_safely(self, text: str) -> Optional[Dict[str, Any]]:
@@ -103,8 +103,8 @@ class OllamaClient:
         try:
             return json.loads(clean_str)
         except Exception as err:
-            logger.warning(f"[Ollama Client] JSON parse error: {str(err)} on raw: {text[:100]}")
+            logger.warning(f"[Ollama Client] JSON parse error: {str(err)} on raw text: {text[:100]}")
             return None
 
-# Singleton Client Instance
+# Singleton Instance
 ollama_client = OllamaClient()

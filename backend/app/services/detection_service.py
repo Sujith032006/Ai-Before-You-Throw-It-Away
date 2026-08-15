@@ -4,9 +4,6 @@ import concurrent.futures
 from PIL import Image, ImageOps
 from typing import List, Optional, Dict, Any
 
-from app.utils.config import (
-    AI_MODE, RFDETR_MODEL, HIGH_CONFIDENCE_THRESHOLD, LOW_CONFIDENCE_THRESHOLD, VISION_MODEL, LLM_MODEL, OLLAMA_MODEL, OLLAMA_BASE_URL
-)
 from app.schemas.detection import (
     ScanResponse, DetectionItem, BoundingBox, BBoxNormalized,
     NormalizedObject, AnalyzerResult
@@ -33,21 +30,10 @@ SUPPORTED_REUSE_CLASSES = {
     "book": ("Old Book", "paper & cardboard", "Paper & Publishing")
 }
 
-def convert_to_normalized_bbox(bbox: Optional[BoundingBox], img_w: int, img_h: int) -> Optional[BBoxNormalized]:
-    if not bbox:
-        return None
-    w = max(1.0, bbox.x2 - bbox.x1)
-    h = max(1.0, bbox.y2 - bbox.y1)
-    return BBoxNormalized(
-        x=round(bbox.x1, 2),
-        y=round(bbox.y1, 2),
-        width=round(w, 2),
-        height=round(h, 2)
-    )
-
 def check_reuse_database_support(base_obj: str, material: str) -> Dict[str, Any]:
     """
-    Stage 2 Lookup: Checks if identified object + material is supported in structured reuse database.
+    Stage 2 Database Support Check:
+    Checks if identified physical object + material is supported in structured reuse database.
     Does NOT modify physical object identity!
     """
     base_obj = base_obj.lower().strip().replace(" ", "_")
@@ -122,12 +108,7 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
     except Exception as e:
         logger.warning(f"[Detection Service] EXIF transpose error: {str(e)}")
 
-    img_w, img_h = image.size
-
-    # Step 1 & 2 Development Logging
-    logger.info(f"[ANALYZER INPUT] image_received=true, width={img_w}, height={img_h}, byte_size={file_size_bytes}")
-
-    # 2. Stage 1: Central Physical Object Identification Service (Thread Safe Loop Runner)
+    # 2. Stage 1: Physical Object Identification via Ollama Qwen3-VL
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -143,34 +124,34 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
             object_identification_service.identify_object(image, file_size_bytes)
         )
 
-    # Synthetic image or unparsed test handling
-    if id_result.status in ["poor_image_quality", "ambiguous"] or id_result.object_name == "unknown":
+    # Unknown or Poor Quality image handling (STRICT: Unknown remains Unknown!)
+    if id_result.status in ["poor_image_quality", "ambiguous", "unknown"] or id_result.object_name == "unknown":
         norm_obj = NormalizedObject(
-            name="item",
-            display_name="Scanned Item",
-            base_object="item",
+            name="unknown",
+            display_name="Unknown Object",
+            base_object="unknown",
             material="unknown",
             condition="usable",
             category="Household Object",
             supported=False,
-            confidence=0.75,
-            confidence_level="medium"
+            confidence=0.0,
+            confidence_level="unknown"
         )
         analyzer_res = AnalyzerResult(
             object=norm_obj,
             supported=False,
-            confidence=0.75,
-            confidence_level="medium",
-            source="vision_ai",
-            status="identified_but_unsupported",
+            confidence=0.0,
+            confidence_level="unknown",
+            source="ollama_qwen3_vl",
+            status=id_result.status,
             verification="consistent",
-            suggestions=[id_result.reason or "Identify your object using the 1-Tap Quick Select below."]
+            suggestions=[id_result.reason or "Please upload a clearer image showing the complete object."]
         )
         return ScanResponse(
             success=True,
             analysis=analyzer_res,
-            message="Identified Scanned Item (Outside Structured Reuse Database)",
-            mode="vision_ai"
+            message="Could not identify physical object confidently.",
+            mode="ollama_qwen3_vl"
         )
 
     # 3. Stage 2: Reuse Database Support Lookup
@@ -211,16 +192,15 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
             )
 
     debug_data = {
-        "image_received": True,
-        "image_dimensions": f"{img_w}x{img_h}",
-        "ollama_reachable": bool(OLLAMA_BASE_URL),
-        "model": OLLAMA_MODEL if OLLAMA_BASE_URL else (VISION_MODEL or LLM_MODEL),
-        "image_sent_to_model": True,
-        "raw_model_response": id_result.object_name,
+        "model_used": "qwen3-vl:8b",
+        "ollama_called": True,
+        "rfdetr_called": False,
+        "raw_vision_object": id_result.object_name,
         "normalized_object": db_info["name"],
-        "supported_database_result": is_supported,
+        "database_class": db_info["name"] if is_supported else "unsupported",
         "final_object": db_info["name"],
-        "status": status_str
+        "status": status_str,
+        "supported": is_supported
     }
 
     analyzer_res = AnalyzerResult(
@@ -228,9 +208,9 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
         supported=is_supported,
         confidence=id_result.confidence,
         confidence_level=id_result.confidence_level,
-        source="vision_ai",
+        source="ollama_qwen3_vl",
         status=status_str,
-        verification="vision_ai_primary",
+        verification="ollama_primary",
         bbox=None,
         detected_objects=detected_norm_list,
         debug_info=debug_data
@@ -244,5 +224,5 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
         primary_detection=None,
         detections=[],
         message=msg,
-        mode="vision_ai"
+        mode="ollama_qwen3_vl"
     )

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.ai.ollama_client import ollama_client
-from app.services.object_identification_service import normalize_object_name
+from app.utils.object_normalization import normalize_object_name
 from app.services.detection_service import check_reuse_database_support
 
 client = TestClient(app)
@@ -19,11 +19,11 @@ def test_ollama_client_json_parsing():
     assert parsed["confidence"] == 0.95
 
 def test_ollama_health_endpoint():
-    """Test GET /api/analyzer/health endpoint."""
+    """Test GET /api/analyzer/health endpoint (Section 17)."""
     resp = client.get("/api/analyzer/health")
     assert resp.status_code == 200
     data = resp.json()
-    assert "ollama" in data
+    assert data["provider"] == "ollama"
     assert "model" in data
     assert "status" in data
 
@@ -41,9 +41,8 @@ def test_ollama_compare_endpoint():
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
-    assert "comparison" in data
-    assert "ollama_qwen3_vl" in data["comparison"]
-    assert "gemini_vision_ai" in data["comparison"]
+    assert "analyzer" in data
+    assert "ollama_qwen3_vl" in data["analyzer"]
 
 def test_ollama_chair_never_cardboard_box_regression():
     """Critical Regression: Chair MUST NEVER become cardboard_box."""

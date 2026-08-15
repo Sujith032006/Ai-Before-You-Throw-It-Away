@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.schemas.detection import ScanResponse, AnalyzerResult
-from app.services.object_identification_service import normalize_object_name
+from app.utils.object_normalization import normalize_object_name
 from app.services.detection_service import check_reuse_database_support
 
 client = TestClient(app)
