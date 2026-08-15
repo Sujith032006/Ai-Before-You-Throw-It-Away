@@ -23,3 +23,9 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "gemini-1.5-flash")
 LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
+
+# Ollama + Qwen3-VL Configuration
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3-vl:8b")
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "15"))
+PRIMARY_ANALYZER_PROVIDER = os.getenv("PRIMARY_ANALYZER_PROVIDER", "ollama").lower()

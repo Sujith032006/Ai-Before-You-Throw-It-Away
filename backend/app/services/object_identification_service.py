@@ -4,8 +4,10 @@ from PIL import Image
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 
-from app.utils.config import LLM_MODE, LLM_API_KEY, VISION_MODEL, LLM_MODEL
+from app.utils.config import LLM_MODE, LLM_API_KEY, VISION_MODEL, LLM_MODEL, PRIMARY_ANALYZER_PROVIDER
+from app.utils.object_normalization import normalize_object_name, derive_confidence_level
 from app.ai.vision_detector import analyze_image_with_vision_ai
+from app.ai.ollama_object_analyzer import ollama_object_analyzer
 from app.services.image_quality_service import evaluate_image_quality
 
 logger = logging.getLogger(__name__)
@@ -21,54 +23,10 @@ class ObjectIdentificationResult(BaseModel):
     status: str            # "identified" | "multiple_objects" | "ambiguous" | "poor_image_quality" | "analysis_error"
     detected_objects: List[Dict[str, Any]] = []
 
-def derive_confidence_level(score: float) -> str:
-    if score >= 0.85:
-        return "high"
-    elif score >= 0.65:
-        return "medium"
-    elif score >= 0.40:
-        return "low"
-    return "unknown"
-
-def normalize_object_name(raw_name: str) -> Dict[str, str]:
-    """
-    Standardizes equivalent physical object names.
-    NEVER converts an unknown or unsupported item into a reuse class!
-    """
-    clean = raw_name.lower().strip().replace("-", "_").replace(" ", "_")
-
-    # Safe equivalencies
-    mappings = {
-        "cell_phone": ("smartphone", "Smartphone"),
-        "mobile_phone": ("smartphone", "Smartphone"),
-        "phone": ("smartphone", "Smartphone"),
-        "dining_table": ("table", "Table"),
-        "desk": ("table", "Desk / Table"),
-        "computer_keyboard": ("keyboard", "Keyboard"),
-        "computer_monitor": ("monitor", "Monitor / Screen"),
-        "tv": ("monitor", "Monitor / Screen"),
-        "backpack": ("backpack", "Backpack"),
-        "handbag": ("bag", "Bag / Handbag"),
-        "suitcase": ("bag", "Luggage / Bag"),
-        "cardboard_container": ("cardboard_box", "Cardboard Box"),
-        "shipping_box": ("cardboard_box", "Cardboard Box"),
-        "aluminum_can": ("tin_can", "Tin Can / Aluminum Can"),
-        "metal_can": ("tin_can", "Tin Can"),
-        "glass_vase": ("glass_jar", "Glass Jar / Vase"),
-    }
-
-    if clean in mappings:
-        n, d = mappings[clean]
-        return {"object_name": n, "display_name": d}
-
-    # Default clean format
-    display = clean.replace("_", " ").title()
-    return {"object_name": clean, "display_name": display}
-
 class ObjectIdentificationService:
     """
     Central Service responsible ONLY for physical object identification.
-    Separated from reuse database lookup and recommendations.
+    Supports local Ollama + Qwen3-VL Vision AI with seamless cloud fallback.
     """
 
     async def identify_object(self, image: Image.Image, file_size_bytes: int = 0) -> ObjectIdentificationResult:
@@ -87,7 +45,23 @@ class ObjectIdentificationService:
                 status="poor_image_quality"
             )
 
-        # 2. Pass 1: Primary Gemini Vision Multimodal Identification
+        # 2. Attempt Local Ollama Qwen3-VL Execution if Primary or Available
+        ollama_res = await ollama_object_analyzer.analyze_image(image)
+        if ollama_res and isinstance(ollama_res, dict) and ollama_res.get("object_name"):
+            logger.info(f"[Object Identification Service] Ollama Qwen3-VL identified: {ollama_res['object_name']}")
+            return ObjectIdentificationResult(
+                object_name=ollama_res["object_name"],
+                display_name=ollama_res["display_name"],
+                confidence=ollama_res["confidence"],
+                confidence_level=ollama_res["confidence_level"],
+                material=ollama_res["material"],
+                condition=ollama_res["condition"],
+                reason=ollama_res["reason"],
+                status=ollama_res["status"],
+                detected_objects=ollama_res.get("detected_objects", [])
+            )
+
+        # 3. Fallback: Gemini Multimodal Vision AI Identification
         raw_res1 = await analyze_image_with_vision_ai(image)
 
         if not raw_res1 or not isinstance(raw_res1, dict):
@@ -154,7 +128,7 @@ class ObjectIdentificationService:
 
         norm = normalize_object_name(raw_name)
 
-        # 3. Pass 2: Second-Pass Verification for Medium/Low Confidence (< 0.85)
+        # 4. Pass 2: Second-Pass Verification for Medium/Low Confidence (< 0.85)
         final_conf = raw_conf
         final_status = "identified"
 
