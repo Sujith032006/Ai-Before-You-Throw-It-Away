@@ -4,6 +4,13 @@ import type { RecommendationResponse, RecommendationRequest } from '../types/rec
 import type { ActivityItem } from '../types/dashboard';
 import { deleteScanHistoryItem, clearAllUserHistory } from '../services/dashboardService';
 
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  message: string;
+  timestamp?: string;
+  updated_project?: any;
+}
+
 interface ScanContextType {
   selectedImage: string | null;
   setSelectedImage: (image: string | null) => void;
@@ -13,6 +20,26 @@ interface ScanContextType {
   setRecommendations: (recs: RecommendationResponse | null) => void;
   lastPreferences: RecommendationRequest | null;
   setLastPreferences: (prefs: RecommendationRequest | null) => void;
+
+  // Central User Preferences State
+  goals: string[];
+  setGoals: (goals: string[] | ((prev: string[]) => string[])) => void;
+  tools: string[];
+  setTools: (tools: string[] | ((prev: string[]) => string[])) => void;
+  materials: string[];
+  setMaterials: (materials: string[] | ((prev: string[]) => string[])) => void;
+  budget: string;
+  setBudget: (budget: string) => void;
+  difficulty: string;
+  setDifficulty: (difficulty: string) => void;
+  timeAvailable: string;
+  setTimeAvailable: (time: string) => void;
+
+  // Central Reactive AI Assistant Chat Context
+  chatHistory: ChatTurn[];
+  setChatHistory: (history: ChatTurn[] | ((prev: ChatTurn[]) => ChatTurn[])) => void;
+  addChatMessage: (turn: ChatTurn) => void;
+
   activityList: ActivityItem[];
   deletedIds: string[];
   recordScanActivity: (objectName: string, projectId: string, projectName: string, score: number) => void;
@@ -32,6 +59,17 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [detectionResult, setDetectionResult] = useState<DetectionResult | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationResponse | null>(null);
   const [lastPreferences, setLastPreferences] = useState<RecommendationRequest | null>(null);
+
+  // Central Multi-Select Preferences State
+  const [goals, setGoals] = useState<string[]>(['gardening']);
+  const [tools, setTools] = useState<string[]>(['scissors']);
+  const [materials, setMaterials] = useState<string[]>([]);
+  const [budget, setBudget] = useState<string>('0-50');
+  const [difficulty, setDifficulty] = useState<string>('easy');
+  const [timeAvailable, setTimeAvailable] = useState<string>('30m');
+
+  // Chat Context State
+  const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
 
   const [deletedIds, setDeletedIds] = useState<string[]>(() => {
     try {
@@ -65,6 +103,10 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(DELETED_KEY, JSON.stringify(deletedIds));
     } catch {}
   }, [deletedIds]);
+
+  const addChatMessage = (turn: ChatTurn) => {
+    setChatHistory(prev => [...prev, turn]);
+  };
 
   const recordScanActivity = (objectName: string, projectId: string, projectName: string, score: number) => {
     const today = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -120,6 +162,13 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     setDetectionResult(null);
     setRecommendations(null);
     setLastPreferences(null);
+    setGoals(['gardening']);
+    setTools(['scissors']);
+    setMaterials([]);
+    setBudget('0-50');
+    setDifficulty('easy');
+    setTimeAvailable('30m');
+    setChatHistory([]);
   };
 
   return (
@@ -133,6 +182,21 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         setRecommendations,
         lastPreferences,
         setLastPreferences,
+        goals,
+        setGoals,
+        tools,
+        setTools,
+        materials,
+        setMaterials,
+        budget,
+        setBudget,
+        difficulty,
+        setDifficulty,
+        timeAvailable,
+        setTimeAvailable,
+        chatHistory,
+        setChatHistory,
+        addChatMessage,
         activityList,
         deletedIds,
         recordScanActivity,

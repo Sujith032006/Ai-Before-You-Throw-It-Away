@@ -51,17 +51,18 @@ def get_confidence_level(score: float) -> str:
         return "medium"
     elif score > 0.0:
         return "low"
-    return "none"
+    return "unknown"
 
 def normalize_object_identity(base_obj: str, material: str) -> Dict[str, Any]:
     """
-    Normalizes open-world physical object + material into structured object item.
+    Maps base physical object + material to structured object item.
+    Crucial: Material is separated from base object identity!
     Only normalizes to a supported reuse class when material is verified!
     """
     base_obj = base_obj.lower().strip().replace(" ", "_")
     mat = material.lower().strip() if material else "unknown"
 
-    # 1. Bottle Handling (Never guess material!)
+    # 1. Bottle Handling (Never guess material from word "bottle" alone!)
     if "bottle" in base_obj:
         if "plastic" in mat or "pet" in mat:
             return {
@@ -91,7 +92,7 @@ def normalize_object_identity(base_obj: str, material: str) -> Dict[str, Any]:
                 "category": "Kitchen Packaging"
             }
         else:
-            # Material unknown — do not force plastic_bottle!
+            # Material unknown — bottle remains unsupported generic bottle!
             return {
                 "name": "bottle",
                 "display_name": "Bottle",
@@ -101,9 +102,9 @@ def normalize_object_identity(base_obj: str, material: str) -> Dict[str, Any]:
                 "category": "Containers"
             }
 
-    # 2. Jar / Glassware
+    # 2. Glass Jar / Food Jar
     if "jar" in base_obj or "vase" in base_obj:
-        if "glass" in mat or "vase" in base_obj or "jar" in base_obj:
+        if "glass" in mat or "jar" in base_obj:
             return {
                 "name": "glass_jar",
                 "display_name": "Glass Jar",
@@ -113,7 +114,7 @@ def normalize_object_identity(base_obj: str, material: str) -> Dict[str, Any]:
                 "category": "Pantry Storage"
             }
 
-    # 3. Box / Cardboard
+    # 3. Box / Cardboard Container
     if "box" in base_obj or "carton" in base_obj:
         if "shoe" in base_obj:
             return {
@@ -133,7 +134,7 @@ def normalize_object_identity(base_obj: str, material: str) -> Dict[str, Any]:
                 "supported": True,
                 "category": "Biodegradable Packaging"
             }
-        else:
+        elif "cardboard" in mat or "paper" in mat or "box" in base_obj:
             return {
                 "name": "cardboard_box",
                 "display_name": "Cardboard Box",
@@ -143,19 +144,18 @@ def normalize_object_identity(base_obj: str, material: str) -> Dict[str, Any]:
                 "category": "Packaging Waste"
             }
 
-    # 4. Can / Beverage Container
-    if "can" in base_obj or "cup" in base_obj or "mug" in base_obj:
-        if "metal" in mat or "aluminum" in mat or "steel" in mat or "can" in base_obj:
-            return {
-                "name": "tin_can",
-                "display_name": "Tin Can",
-                "base_object": "can",
-                "material": "metal",
-                "supported": True,
-                "category": "Kitchen Packaging"
-            }
+    # 4. Tin Can / Food Can
+    if "can" in base_obj or "tin" in base_obj:
+        return {
+            "name": "tin_can",
+            "display_name": "Tin Can",
+            "base_object": "can",
+            "material": "metal",
+            "supported": True,
+            "category": "Kitchen Packaging"
+        }
 
-    # 5. Cell Phone / Smartphone
+    # 5. Smartphone / Cell Phone
     if "phone" in base_obj or "mobile" in base_obj or "smartphone" in base_obj:
         return {
             "name": "cell_phone",
@@ -188,7 +188,7 @@ def normalize_object_identity(base_obj: str, material: str) -> Dict[str, Any]:
             "category": "Paper & Publishing"
         }
 
-    # 8. Clothing / T-Shirt / Jeans
+    # 8. Textiles (T-Shirt, Jeans)
     if "tshirt" in base_obj or "t-shirt" in base_obj or "shirt" in base_obj:
         return {
             "name": "old_tshirt",
@@ -249,13 +249,13 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
             category="quality_warning",
             supported=False,
             confidence=0.0,
-            confidence_level="none"
+            confidence_level="unknown"
         )
         analyzer_res = AnalyzerResult(
             object=poor_obj,
             supported=False,
             confidence=0.0,
-            confidence_level="none",
+            confidence_level="unknown",
             source="quality_check",
             status="poor_image_quality",
             verification="consistent",
@@ -268,17 +268,16 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
             mode="quality_check"
         )
 
-    # 3. Stage 1: RF-DETR Primary Inference & Bounding Box Extraction
+    # 3. Bounding Box Localization (RF-DETR optional localization layer)
     rfdetr_detections: List[DetectionItem] = []
     try:
         from app.ai.rfdetr_detector import rfdetr_detector
         rfdetr_detections = rfdetr_detector.detect(image)
     except Exception as e:
-        logger.error(f"[Detection Service] RF-DETR detection error: {str(e)}")
+        logger.error(f"[Detection Service] RF-DETR localization error: {str(e)}")
 
-    # Bounding box area filter
-    img_area = float(img_w * img_h)
     filtered_detections: List[DetectionItem] = []
+    img_area = float(img_w * img_h)
     for d in rfdetr_detections:
         if d.bounding_box:
             box_area = (d.bounding_box.x2 - d.bounding_box.x1) * (d.bounding_box.y2 - d.bounding_box.y1)
@@ -289,12 +288,12 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
 
     rf_top = filtered_detections[0] if filtered_detections else None
 
-    # 4. Bounding Box Crop & Vision AI Open-World Analysis
+    # 4. Primary Gemini Multimodal Vision Analyzer Execution
     cropped_img = image
     if rf_top and rf_top.bounding_box:
         cropped_img = crop_detection_box(image, rf_top.bounding_box)
 
-    vision_item = None
+    vision_raw_data = None
     try:
         from app.ai.vision_detector import analyze_image_with_vision_ai
         loop = None
@@ -305,170 +304,132 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
             asyncio.set_event_loop(loop)
 
         if loop and not loop.is_running():
-            vision_item = loop.run_until_complete(analyze_image_with_vision_ai(cropped_img))
+            vision_raw_data = loop.run_until_complete(analyze_image_with_vision_ai(cropped_img))
     except Exception as vision_err:
-        logger.warning(f"[Detection Service] Vision AI verification skipped: {str(vision_err)}")
+        logger.warning(f"[Detection Service] Gemini Vision AI call error: {str(vision_err)}")
 
-    # 5. Evidence & Consistency Verification Analysis
-    rf_obj = rf_top.object.lower() if rf_top else "unknown"
-    rf_conf = rf_top.confidence if rf_top else 0.0
+    # 5. Extract Objects & Evidence from Gemini Vision Response
+    objects_found: List[Dict[str, Any]] = []
+    primary_object_dict: Optional[Dict[str, Any]] = None
+    vi_status = "ambiguous"
 
-    vi_obj = vision_item.object.lower() if vision_item else "unknown"
-    vi_conf = vision_item.confidence if vision_item else 0.0
-    vi_mat = vision_item.material if vision_item else "unknown"
+    if vision_raw_data and isinstance(vision_raw_data, dict):
+        vi_status = vision_raw_data.get("status", "identified")
+        objects_found = vision_raw_data.get("objects", [])
+        p_idx = vision_raw_data.get("primary_object_index", 0)
+        if objects_found and p_idx < len(objects_found):
+            primary_object_dict = objects_found[p_idx]
+        elif objects_found:
+            primary_object_dict = objects_found[0]
 
-    verification_status = "consistent"
-    chosen_base_obj = "unknown"
-    chosen_material = "unknown"
-    final_confidence = 0.0
-    source_engine = "hybrid"
-
-    # Evaluate Evidence
-    if vi_obj != "unknown":
-        if rf_obj != "unknown" and rf_obj != vi_obj and rf_conf >= 0.80 and vi_conf >= 0.80:
-            # CONFLICT UNRESOLVED: RF-DETR says bottle 0.92, Vision AI says chair 0.96 with blur/glare
-            logger.warning(f"[Detection Service] UNRESOLVED CONFLICT: RF-DETR ({rf_obj}={rf_conf}) vs Vision AI ({vi_obj}={vi_conf})")
-            verification_status = "conflict_unresolved"
+    # Check for Ambiguous / Low Quality Vision Result
+    if vi_status == "ambiguous" or not primary_object_dict or primary_object_dict.get("object_name", "unknown") == "unknown":
+        # Fallback to RF-DETR localization if available, but NEVER force a fake object!
+        if rf_top and rf_top.confidence >= 0.15 and rf_top.object != "unknown":
+            chosen_base = rf_top.object
+            chosen_mat = rf_top.material or "unknown"
+            chosen_conf = rf_top.confidence
+            source_engine = "rf_detr"
+            verification_status = "rf_detr_primary"
+        else:
             unknown_obj = NormalizedObject(
                 name="unknown",
-                display_name="Ambiguous Object",
+                display_name="Unknown Object",
                 base_object="unknown",
                 material="unknown",
                 condition="unknown",
                 category="unknown",
                 supported=False,
                 confidence=0.0,
-                confidence_level="none"
+                confidence_level="unknown"
             )
             analyzer_res = AnalyzerResult(
                 object=unknown_obj,
                 supported=False,
                 confidence=0.0,
-                confidence_level="none",
+                confidence_level="unknown",
                 source="hybrid",
                 status="ambiguous",
-                verification="conflict_unresolved",
+                verification="consistent",
                 suggestions=[
-                    "Hold device steady and center the object.",
-                    "Ensure clear lighting without heavy glare.",
-                    "Avoid cluttered backgrounds with multiple conflicting items."
-                ],
-                debug_info={
-                    "rfdetr_object": rf_obj, "rfdetr_conf": rf_conf,
-                    "vision_object": vi_obj, "vision_conf": vi_conf,
-                    "conflict": "unresolved"
-                }
+                    "Please take another photo with the object clearly visible.",
+                    "Ensure bright lighting without heavy background glare.",
+                    "Keep the object centered in the camera frame."
+                ]
             )
             return ScanResponse(
                 success=False,
                 analysis=analyzer_res,
-                message="Conflicting detection signals. Please retake photo with clearer lighting.",
+                message="Object could not be identified reliably. Please retake photo.",
                 mode="hybrid"
             )
-
-        chosen_base_obj = vi_obj
-        chosen_material = vi_mat
-        final_confidence = max(vi_conf, rf_conf)
-        verification_status = "consistent" if (rf_obj == vi_obj or rf_obj == "unknown") else "vision_ai_primary"
-        source_engine = "vision_ai" if verification_status == "vision_ai_primary" else "hybrid"
-
-    elif rf_top and rf_conf > 0.15:
-        chosen_base_obj = rf_obj
-        chosen_material = rf_top.material if rf_top.material != "unknown" else vi_mat
-        final_confidence = rf_conf
-        verification_status = "rf_detr_primary"
-        source_engine = "rf_detr"
-
     else:
-        # Absolute unknown safeguard
-        unknown_obj = NormalizedObject(
-            name="unknown",
-            display_name="Unknown Object",
-            base_object="unknown",
-            material="unknown",
-            condition="unknown",
-            category="unknown",
-            supported=False,
-            confidence=0.0,
-            confidence_level="none"
-        )
-        analyzer_res = AnalyzerResult(
-            object=unknown_obj,
-            supported=False,
-            confidence=0.0,
-            confidence_level="none",
-            source="hybrid",
-            status="ambiguous",
-            verification="consistent",
-            suggestions=[
-                "Move closer to the main object.",
-                "Ensure bright, even lighting.",
-                "Keep the object centered in the frame."
-            ]
-        )
-        return ScanResponse(
-            success=False,
-            analysis=analyzer_res,
-            message="Could not confidently identify the physical object.",
-            mode="hybrid"
-        )
+        chosen_base = primary_object_dict.get("object_name", "unknown")
+        chosen_mat = primary_object_dict.get("material", "unknown")
+        chosen_conf = float(primary_object_dict.get("confidence", 0.90))
+        source_engine = "vision_ai"
+        verification_status = "vision_ai_primary"
 
     # 6. Normalize Object Identity (Stage 1 Output)
-    normalized_data = normalize_object_identity(chosen_base_obj, chosen_material)
-    conf_level = get_confidence_level(final_confidence)
+    norm_info = normalize_object_identity(chosen_base, chosen_mat)
+    conf_level = primary_object_dict.get("confidence_level") if primary_object_dict else get_confidence_level(chosen_conf)
+    if not conf_level or conf_level not in ["high", "medium", "low", "unknown"]:
+        conf_level = get_confidence_level(chosen_conf)
 
     norm_obj = NormalizedObject(
-        name=normalized_data["name"],
-        display_name=normalized_data["display_name"],
-        base_object=normalized_data["base_object"],
-        material=normalized_data["material"],
-        condition=vision_item.condition if vision_item and hasattr(vision_item, 'condition') else "usable",
-        category=normalized_data["category"],
-        supported=normalized_data["supported"],
-        confidence=round(final_confidence, 4),
+        name=norm_info["name"],
+        display_name=norm_info["display_name"],
+        base_object=norm_info["base_object"],
+        material=norm_info["material"],
+        condition=primary_object_dict.get("condition", "usable") if primary_object_dict else "usable",
+        category=norm_info["category"],
+        supported=norm_info["supported"],
+        confidence=round(chosen_conf, 4),
         confidence_level=conf_level
     )
 
-    # 7. Check Stage 2 Supported Status
-    is_supported = normalized_data["supported"]
+    # 7. Check Stage 2 Supported Reuse Status
+    is_supported = norm_info["supported"]
     status_str = "identified" if is_supported else "identified_but_unsupported"
 
-    # Multi-object check: If more than 1 distinct high-confidence object detected
+    # Multi-Object Handling
     detected_norm_list: List[NormalizedObject] = []
-    if len(filtered_detections) > 1 and filtered_detections[1].confidence >= 0.55:
+    if len(objects_found) > 1:
         status_str = "multiple_objects"
-        for det in filtered_detections[:4]:
-            d_norm = normalize_object_identity(det.object, det.material or "unknown")
+        for obj_item in objects_found:
+            b_name = obj_item.get("object_name", "unknown")
+            b_mat = obj_item.get("material", "unknown")
+            d_norm = normalize_object_identity(b_name, b_mat)
+            d_conf = float(obj_item.get("confidence", 0.85))
             detected_norm_list.append(
                 NormalizedObject(
                     name=d_norm["name"],
                     display_name=d_norm["display_name"],
                     base_object=d_norm["base_object"],
                     material=d_norm["material"],
+                    condition=obj_item.get("condition", "usable"),
                     category=d_norm["category"],
                     supported=d_norm["supported"],
-                    confidence=round(det.confidence, 4),
-                    confidence_level=get_confidence_level(det.confidence)
+                    confidence=round(d_conf, 4),
+                    confidence_level=obj_item.get("confidence_level", get_confidence_level(d_conf))
                 )
             )
 
     top_bbox = rf_top.bbox_normalized if rf_top else None
 
     debug_data = {
-        "rfdetr_object": rf_obj,
-        "rfdetr_confidence": rf_conf,
-        "vision_ai_object": vi_obj,
-        "vision_ai_confidence": vi_conf,
-        "extracted_material": chosen_material,
-        "verification_status": verification_status,
-        "normalized_name": normalized_data["name"],
-        "supported_database_status": is_supported
+        "gemini_vision_status": vi_status,
+        "chosen_base_object": chosen_base,
+        "chosen_material": chosen_mat,
+        "final_confidence": chosen_conf,
+        "normalized_name": norm_info["name"],
+        "supported": is_supported
     }
 
     analyzer_res = AnalyzerResult(
         object=norm_obj,
         supported=is_supported,
-        confidence=round(final_confidence, 4),
+        confidence=round(chosen_conf, 4),
         confidence_level=conf_level,
         source=source_engine,
         status=status_str,

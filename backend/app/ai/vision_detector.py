@@ -2,38 +2,60 @@ import base64
 import io
 import json
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from PIL import Image
 import httpx
 
-from app.utils.config import LLM_MODE, LLM_PROVIDER, LLM_API_KEY, LLM_MODEL, LLM_TIMEOUT_SECONDS
+from app.utils.config import (
+    LLM_MODE, LLM_PROVIDER, LLM_API_KEY, LLM_MODEL, VISION_MODEL, LLM_TIMEOUT_SECONDS
+)
 from app.schemas.detection import DetectionItem, BoundingBox
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_VISION_PROMPT = """You are an expert Open-World Computer Vision Assistant.
-Identify the primary physical object visible in this image.
-Do NOT restrict yourself to any predefined reuse or recycling list.
-Identify what physical object is actually in the image.
+SYSTEM_VISION_PROMPT = """You are a visual object identification system.
+Analyze the uploaded image carefully.
 
-Return strictly valid JSON with these keys:
+Your first responsibility is to identify the actual physical object visible in the image.
+Do NOT choose from a restricted recycling or reuse category.
+Do NOT force the object into a known class.
+Do NOT assume that every object is recyclable.
+
+Identify the common real-world object name (e.g. chair, table, laptop, smartphone, keyboard, monitor, shoe, bag, book, fan, bicycle, toy, bottle, jar, cup, plate, box, cardboard box, tin can, plastic container, etc.).
+
+If there are multiple distinct objects visible, list each important object in the "objects" array.
+
+Separate object identity from material. For example:
+- A bottle is an object. Plastic is its material.
+- Do not call a bottle a plastic bottle unless the material can be reasonably determined.
+
+Return strictly valid JSON with this exact schema:
 {
-  "object": "<base object name in lowercase, e.g. chair, table, laptop, smartphone, bottle, jar, box, can, shoe, bag, book, keyboard, monitor, fan, plant, toy, bicycle, car, food, etc.>",
-  "display_name": "<Human readable name, e.g. Plastic Bottle, Glass Jar, Dining Chair, Laptop Computer>",
-  "material": "<dominant material: plastic, glass, wood, metal, cardboard, fabric, cotton, denim, leather, electronic, paper, unknown>",
-  "condition": "<usable, used, damaged, unknown>",
-  "confidence": <float between 0.0 and 1.0 representing identification confidence>,
-  "category": "<General physical category, e.g. Furniture, Electronics, Containers, Packaging, Clothing, Household Hardware, Unknown>"
+  "status": "identified",
+  "objects": [
+    {
+      "object_name": "<common lowercase name e.g. chair, laptop, bottle>",
+      "display_name": "<Title Case Name e.g. Chair, Laptop, Bottle>",
+      "material": "<plastic|glass|metal|paper|cardboard|wood|fabric|rubber|electronics|ceramic|mixed|unknown>",
+      "condition": "<new|used|damaged|broken|dirty|intact|unknown>",
+      "confidence": <float between 0.0 and 1.0>,
+      "confidence_level": "<high|medium|low|unknown>"
+    }
+  ],
+  "primary_object_index": 0,
+  "image_quality": "good",
+  "reasoning_summary": "<Short factual 1-sentence summary>"
 }
 
 Important:
-- If the image is blurry, ambiguous, or no object is clearly visible, set "object": "unknown" and "confidence": 0.0.
-- Do NOT guess if you are uncertain. Never force an object into a reuse category.
+- If the image is blurry, ambiguous, severely obstructed, or impossible to identify reliably, set "status": "ambiguous", "objects": [], and reasoning_summary explaining why.
+- Never guess. Never invent an object.
 """
 
-async def analyze_image_with_vision_ai(image: Image.Image) -> Optional[DetectionItem]:
+async def analyze_image_with_vision_ai(image: Image.Image) -> Optional[Dict[str, Any]]:
     """
-    Multimodal Vision AI open-world object & material identifier (Gemini 1.5 / OpenAI GPT-4o-mini Vision)
+    Primary Gemini Multimodal Vision Analyzer.
+    Identifies actual open-world physical object, material, and condition.
     """
     if not LLM_API_KEY or LLM_MODE != "real":
         return None
@@ -45,9 +67,12 @@ async def analyze_image_with_vision_ai(image: Image.Image) -> Optional[Detection
         img_bytes = buffered.getvalue()
         base64_img = base64.b64encode(img_bytes).decode("utf-8")
 
+        target_model = VISION_MODEL if VISION_MODEL else LLM_MODEL
+        if not target_model:
+            target_model = "gemini-1.5-flash"
+
         if LLM_PROVIDER == "gemini":
-            model_name = LLM_MODEL if LLM_MODEL and "gemini" in LLM_MODEL else "gemini-1.5-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={LLM_API_KEY}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={LLM_API_KEY}"
             headers = {"Content-Type": "application/json"}
 
             payload = {
@@ -76,20 +101,7 @@ async def analyze_image_with_vision_ai(image: Image.Image) -> Optional[Detection
                     res_json = resp.json()
                     raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"]
                     data = json.loads(raw_text)
-                    obj_name = data.get("object", "unknown").lower().strip()
-                    conf = float(data.get("confidence", 0.90))
-                    mat = data.get("material", "unknown")
-                    cat = data.get("category", "Household Object")
-                    disp = data.get("display_name", obj_name.title())
-
-                    return DetectionItem(
-                        object=obj_name,
-                        display_name=disp,
-                        confidence=conf,
-                        material=mat,
-                        category=cat,
-                        bounding_box=BoundingBox(x1=10, y1=10, x2=image.width-10, y2=image.height-10)
-                    )
+                    return data
 
         elif LLM_PROVIDER == "openai":
             headers = {
@@ -118,22 +130,9 @@ async def analyze_image_with_vision_ai(image: Image.Image) -> Optional[Detection
                     res_json = resp.json()
                     raw_text = res_json["choices"][0]["message"]["content"]
                     data = json.loads(raw_text)
-                    obj_name = data.get("object", "unknown").lower().strip()
-                    conf = float(data.get("confidence", 0.90))
-                    mat = data.get("material", "unknown")
-                    cat = data.get("category", "Household Object")
-                    disp = data.get("display_name", obj_name.title())
-
-                    return DetectionItem(
-                        object=obj_name,
-                        display_name=disp,
-                        confidence=conf,
-                        material=mat,
-                        category=cat,
-                        bounding_box=BoundingBox(x1=10, y1=10, x2=image.width-10, y2=image.height-10)
-                    )
+                    return data
 
     except Exception as e:
-        logger.error(f"[Vision Detector] Vision AI API call failed: {str(e)}")
+        logger.error(f"[Vision Detector] Primary Gemini Vision API call failed: {str(e)}")
 
     return None

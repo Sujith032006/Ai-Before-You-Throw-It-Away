@@ -2,9 +2,13 @@ from fastapi import APIRouter, status
 from app.schemas.ai import (
     PersonalizedGuideRequest, PersonalizedGuideResponse,
     ChatRequest, ChatResponse,
-    GeneralIdeasRequest, GeneralIdeasResponse
+    GeneralIdeasRequest, GeneralIdeasResponse,
+    AssistantChatRequest, AssistantChatResponse
 )
-from app.ai.llm_service import generate_personalized_guide, chat_with_assistant, generate_general_ideas
+from app.ai.llm_service import (
+    generate_personalized_guide, chat_with_assistant, 
+    generate_general_ideas, assistant_chat_service
+)
 from app.services.persistence_service import save_selected_project_and_guide, save_chat_turn
 
 router = APIRouter(prefix="/api", tags=["Generative AI"])
@@ -15,7 +19,7 @@ async def get_personalized_guide(request: PersonalizedGuideRequest):
     if guide_response.success:
         save_selected_project_and_guide(
             project_id=request.project_id,
-            guide_data=guide_response.dict()
+            guide_data=guide_response.model_dump() if hasattr(guide_response, "model_dump") else guide_response.dict()
         )
     return guide_response
 
@@ -29,6 +33,10 @@ async def chat_with_ai(request: ChatRequest):
             project_id=request.project_id
         )
     return chat_response
+
+@router.post("/assistant/chat", response_model=AssistantChatResponse, status_code=status.HTTP_200_OK)
+async def reactive_assistant_chat(request: AssistantChatRequest):
+    return await assistant_chat_service(request)
 
 @router.post("/general-ideas", response_model=GeneralIdeasResponse, status_code=status.HTTP_200_OK)
 async def get_general_ideas(request: GeneralIdeasRequest):

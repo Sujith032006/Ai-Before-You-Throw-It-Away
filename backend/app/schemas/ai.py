@@ -56,6 +56,19 @@ class ChatResponse(BaseModel):
     message: str
     error: Optional[str] = None
 
+class AssistantChatRequest(BaseModel):
+    project_id: Optional[str] = None
+    message: str
+    context: Dict[str, Any] = {}
+    conversation: List[ChatMessage] = []
+
+class AssistantChatResponse(BaseModel):
+    success: bool
+    answer: str
+    updated_project: Optional[Dict[str, Any]] = None
+    changed_fields: List[str] = []
+    message: Optional[str] = None
+
 class GeneralIdeasRequest(BaseModel):
     object_name: str
     material: Optional[str] = "unknown"

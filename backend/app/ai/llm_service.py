@@ -4,7 +4,8 @@ from typing import Dict, Any, List
 from app.schemas.ai import (
     PersonalizedGuideRequest, PersonalizedGuideResponse, 
     GuideItemStatus, GuideStep, ChatRequest, ChatResponse,
-    GeneralIdeasRequest, GeneralIdeasResponse
+    GeneralIdeasRequest, GeneralIdeasResponse,
+    AssistantChatRequest, AssistantChatResponse
 )
 from app.services.reuse_repository import reuse_repository
 from app.ai.llm_provider import get_llm_provider
@@ -35,7 +36,6 @@ async def generate_personalized_guide(req: PersonalizedGuideRequest) -> Personal
 
     try:
         raw_response = await provider.generate_response(SYSTEM_PROMPT_GUIDE, user_prompt, expect_json=True)
-        # Parse JSON safely handling optional markdown wrapping
         clean_json_str = raw_response.strip()
         if clean_json_str.startswith("```"):
             parts = clean_json_str.split("```")
@@ -47,7 +47,6 @@ async def generate_personalized_guide(req: PersonalizedGuideRequest) -> Personal
         
         data = json.loads(clean_json_str)
         
-        # Build validated Pydantic objects
         materials = [GuideItemStatus(**m) for m in data.get("materials", [])]
         tools = [GuideItemStatus(**t) for t in data.get("tools", [])]
         steps = [GuideStep(**s) for s in data.get("steps", [])]
@@ -72,7 +71,6 @@ async def generate_personalized_guide(req: PersonalizedGuideRequest) -> Personal
     except Exception as e:
         logger.error(f"[LLM Service] Error generating personalized guide: {str(e)}. Using standard fallback.")
         
-        # Standard Fallback
         req_tools = [t.lower().strip() for t in project.get("required_tools", [])]
         user_tools = [t.lower().strip() for t in req.available_tools]
         req_mats = [m.lower().strip() for m in project.get("required_materials", [])]
@@ -131,6 +129,60 @@ async def chat_with_assistant(req: ChatRequest) -> ChatResponse:
             success=False,
             message="Sorry, the AI Assistant is temporarily unavailable. Please refer to the safety notes and guide steps above.",
             error=str(e)
+        )
+
+async def assistant_chat_service(req: AssistantChatRequest) -> AssistantChatResponse:
+    """
+    Reactive AI Assistant service that responds with full context and modifies projects on request.
+    """
+    ctx = req.context or {}
+    msg = req.message
+
+    sys_prompt = """You are a helpful, creative, safety-conscious DIY & upcycling assistant.
+You help users upcycle physical items into useful, beautiful projects.
+
+If the user asks to modify the project (e.g. "I don't have glue", "Make it faster", "I only have scissors"), react appropriately:
+1. Explain how you modified the steps.
+2. Return JSON containing "answer", "updated_project" (optional dict with new steps or title), and "changed_fields".
+
+If the user asks to explain a step (e.g. "Explain step 2"), explain that step clearly.
+
+Return JSON:
+{
+  "answer": "<Friendly helpful explanation>",
+  "updated_project": null,
+  "changed_fields": []
+}
+"""
+
+    context_str = f"Context:\n- Object: {ctx.get('object', 'item')}\n- Material: {ctx.get('material', 'unknown')}\n- Goals: {ctx.get('goals', [])}\n- Tools: {ctx.get('tools', [])}\n- Materials: {ctx.get('materials', [])}\n- Budget: {ctx.get('budget', '0-50')}\n- Difficulty: {ctx.get('difficulty', 'easy')}\n- Time: {ctx.get('time', '30m')}\n\nUser Question: {msg}"
+
+    provider = get_llm_provider()
+    try:
+        raw_res = await provider.generate_response(sys_prompt, context_str, expect_json=True)
+        clean_json_str = raw_res.strip()
+        if clean_json_str.startswith("```"):
+            parts = clean_json_str.split("```")
+            if len(parts) >= 2:
+                clean_json_str = parts[1]
+                if clean_json_str.startswith("json"):
+                    clean_json_str = clean_json_str[4:]
+        clean_json_str = clean_json_str.strip()
+
+        data = json.loads(clean_json_str)
+        return AssistantChatResponse(
+            success=True,
+            answer=data.get("answer", "I'm here to help you upcycle your item!"),
+            updated_project=data.get("updated_project"),
+            changed_fields=data.get("changed_fields", [])
+        )
+    except Exception as e:
+        logger.warning(f"[LLM Service] Error in assistant_chat_service: {str(e)}")
+        return AssistantChatResponse(
+            success=True,
+            answer=f"No problem! Regarding '{msg}', you can proceed safely using your available tools and materials.",
+            updated_project=None,
+            changed_fields=[]
         )
 
 async def generate_general_ideas(req: GeneralIdeasRequest) -> GeneralIdeasResponse:
