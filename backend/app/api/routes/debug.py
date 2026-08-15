@@ -20,6 +20,51 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Dev Debugging & Analyzer Endpoints"])
 
+@router.post("/api/debug/vision-test", status_code=status.HTTP_200_OK)
+async def vision_test_endpoint(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Step 4 Raw Vision Isolation Test Endpoint.
+    Sends ONLY the image directly to Qwen3-VL/Vision AI without passing through
+    normalization, database lookup, or fallbacks.
+    """
+    try:
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image format: {str(e)}")
+
+    prompt = """Look at the supplied image.
+
+What is the main physical object?
+
+Answer with only the common object name.
+
+Do not use recycling categories.
+Do not use reuse categories.
+Do not use application database categories.
+
+If the image clearly shows a chair, answer CHAIR.
+
+If you cannot determine the object, answer UNKNOWN."""
+
+    # Try Ollama Qwen3-VL first
+    ollama_res = await ollama_client.generate_vision_response(prompt, image)
+    if ollama_res:
+        raw_text = str(ollama_res)
+        return {
+            "model": OLLAMA_MODEL,
+            "raw_response": raw_text,
+            "image_sent": True
+        }
+
+    # Fallback to Gemini Vision AI if Ollama unavailable
+    raw_res = await analyze_image_with_vision_ai(image)
+    return {
+        "model": VISION_MODEL or LLM_MODEL,
+        "raw_response": str(raw_res),
+        "image_sent": True
+    }
+
 @router.get("/api/analyzer/health", tags=["Analyzer Health"])
 @router.get("/api/debug/analyzer/health", tags=["Analyzer Health"])
 async def analyzer_health() -> Dict[str, Any]:

@@ -5,7 +5,7 @@ from PIL import Image, ImageOps
 from typing import List, Optional, Dict, Any
 
 from app.utils.config import (
-    AI_MODE, RFDETR_MODEL, HIGH_CONFIDENCE_THRESHOLD, LOW_CONFIDENCE_THRESHOLD, VISION_MODEL, LLM_MODEL
+    AI_MODE, RFDETR_MODEL, HIGH_CONFIDENCE_THRESHOLD, LOW_CONFIDENCE_THRESHOLD, VISION_MODEL, LLM_MODEL, OLLAMA_MODEL, OLLAMA_BASE_URL
 )
 from app.schemas.detection import (
     ScanResponse, DetectionItem, BoundingBox, BBoxNormalized,
@@ -124,6 +124,9 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
 
     img_w, img_h = image.size
 
+    # Step 1 & 2 Development Logging
+    logger.info(f"[ANALYZER INPUT] image_received=true, width={img_w}, height={img_h}, byte_size={file_size_bytes}")
+
     # 2. Stage 1: Central Physical Object Identification Service (Thread Safe Loop Runner)
     try:
         loop = asyncio.get_running_loop()
@@ -208,16 +211,16 @@ def process_detection(image: Image.Image, file_size_bytes: int = 0) -> ScanRespo
             )
 
     debug_data = {
-        "model_used": VISION_MODEL or LLM_MODEL,
-        "vision_model_called": True,
-        "rfdetr_called": False,
-        "raw_vision_object": id_result.object_name,
-        "raw_rfdetr_object": "none",
+        "image_received": True,
+        "image_dimensions": f"{img_w}x{img_h}",
+        "ollama_reachable": bool(OLLAMA_BASE_URL),
+        "model": OLLAMA_MODEL if OLLAMA_BASE_URL else (VISION_MODEL or LLM_MODEL),
+        "image_sent_to_model": True,
+        "raw_model_response": id_result.object_name,
         "normalized_object": db_info["name"],
-        "database_class": db_info["name"] if is_supported else "unsupported",
+        "supported_database_result": is_supported,
         "final_object": db_info["name"],
-        "status": status_str,
-        "supported": is_supported
+        "status": status_str
     }
 
     analyzer_res = AnalyzerResult(
