@@ -3,18 +3,18 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { 
   ArrowLeft, Clock, IndianRupee, Zap, ShieldAlert, CheckCircle2, 
   Wrench, Layers, AlertTriangle, Sparkles, ChevronRight, 
-  ChevronLeft, Send, Lightbulb, Bot, CheckCircle
+  ChevronLeft, Send, Lightbulb, Bot, CheckCircle, RotateCcw
 } from 'lucide-react';
 
 import { useScan } from '../context/ScanContext';
-import { fetchPersonalizedGuide, sendChatMessage } from '../services/aiService';
+import { fetchPersonalizedGuide, sendProjectChatMessage } from '../services/aiService';
 import { markProjectComplete } from '../services/dashboardService';
 import type { PersonalizedGuideResponse, ChatMessage, PersonalizedGuideRequest } from '../types/ai';
 
 export default function PersonalizedGuide() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { detectionResult, lastPreferences, resetScan, recordProjectCompletion } = useScan();
+  const { detectionResult, lastPreferences, recordProjectCompletion } = useScan();
 
   const projectId = searchParams.get('id') || 'plastic-bottle-self-watering-planter';
   const objectName = searchParams.get('object') || detectionResult?.displayName || 'bottle';
@@ -27,6 +27,13 @@ export default function PersonalizedGuide() {
 
   // AI Assistant Chat State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([
+    "Make it cheaper",
+    "Make it easier",
+    "Give another idea",
+    "I don't have this material",
+    "Explain this step"
+  ]);
   const [inputMsg, setInputMsg] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
 
@@ -78,27 +85,66 @@ export default function PersonalizedGuide() {
     setChatLoading(true);
 
     try {
-      const response = await sendChatMessage({
-        message: textToSend,
-        project_id: projectId,
-        object_name: objectName,
-        user_context: {
-          tools: lastPreferences?.tools || ['scissors'],
-          materials: lastPreferences?.materials || ['soil']
+      const response = await sendProjectChatMessage({
+        project_context: {
+          object: {
+            name: objectName,
+            material: detectionResult?.material || 'unknown',
+            condition: 'used'
+          },
+          selected_project: {
+            title: guide?.title || 'Upcycling Project',
+            difficulty: guide?.difficulty || 'easy',
+            estimated_time_minutes: guide?.estimated_time_minutes || 30,
+            estimated_cost: { min: 0, max: lastPreferences?.budget_max || 50, currency: 'INR' }
+          },
+          user_preferences: {
+            goal: lastPreferences?.goal || 'gardening',
+            custom_goal: lastPreferences?.custom_goal,
+            budget: lastPreferences?.budget_max || 50,
+            time_minutes: lastPreferences?.max_time_minutes || 30,
+            difficulty: lastPreferences?.difficulty || 'easy'
+          },
+          tools: lastPreferences?.tools || [],
+          materials: lastPreferences?.materials || [],
+          current_step: currentStepIndex + 1
         },
-        conversation: messages
+        conversation: updatedConversation,
+        message: textToSend
       });
 
       const assistantMessage: ChatMessage = { role: 'assistant', content: response.message };
       setMessages([...updatedConversation, assistantMessage]);
+
+      if (response.suggestions && response.suggestions.length > 0) {
+        setSuggestions(response.suggestions);
+      }
+
+      // Handle AI project modifications
+      if (response.updated_project && guide) {
+        setGuide({
+          ...guide,
+          title: response.updated_project.title || guide.title,
+          estimated_cost: response.updated_project.estimated_cost_max ? `₹0–₹${response.updated_project.estimated_cost_max}` : guide.estimated_cost,
+          difficulty: response.updated_project.difficulty || guide.difficulty,
+          steps: response.updated_project.steps 
+            ? response.updated_project.steps.map((st: string, i: number) => ({ step_number: i + 1, title: `Step ${i + 1}`, description: st }))
+            : guide.steps
+        });
+      }
     } catch {
       setMessages([...updatedConversation, { 
         role: 'assistant', 
-        content: 'I had trouble connecting. You can substitute cotton yarn with a strip of clean cotton T-shirt or kitchen string!' 
+        content: 'Regarding your question, proceed carefully using your available tools and materials!' 
       }]);
     } finally {
       setChatLoading(false);
     }
+  };
+
+  const handleRestartProject = () => {
+    setMessages([]);
+    setCurrentStepIndex(0);
   };
 
   if (loading) {
@@ -137,7 +183,6 @@ export default function PersonalizedGuide() {
   return (
     <div className="w-full flex-1 bg-slate-950 text-slate-100 pb-20">
       
-      {/* Full Width Desktop Container */}
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-6 space-y-6">
 
         {/* TOP HEADER HERO CARD */}
@@ -151,16 +196,24 @@ export default function PersonalizedGuide() {
               <ArrowLeft size={20} />
             </button>
 
-            <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-black px-3.5 py-1.5 rounded-full uppercase tracking-wider">
-              <Sparkles size={14} />
-              {guide.is_ai_generated ? 'AI Personalized Guide' : 'Standard DIY Guide'}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRestartProject}
+                className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold px-3 py-1.5 rounded-xl transition-colors"
+              >
+                <RotateCcw size={14} /> Start Over
+              </button>
+
+              <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-black px-3.5 py-1.5 rounded-full uppercase tracking-wider">
+                <Sparkles size={14} />
+                {guide.is_ai_generated ? 'AI Personalized Guide' : 'Standard DIY Guide'}
+              </div>
             </div>
           </div>
 
           <h1 className="text-2xl sm:text-4xl font-black text-white mb-2 leading-tight">🌱 {guide.title}</h1>
           <p className="text-slate-300 text-xs sm:text-sm leading-relaxed max-w-3xl mb-4">{guide.summary}</p>
 
-          {/* Metadata Bar */}
           <div className="flex flex-wrap items-center gap-4 bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-xs font-semibold text-slate-300 max-w-xl">
             <span className="flex items-center gap-1.5 text-amber-400"><Clock size={15} /> {guide.estimated_time_minutes} mins</span>
             <span>•</span>
@@ -177,9 +230,7 @@ export default function PersonalizedGuide() {
           {/* LEFT COLUMN: Materials, Tools & Safety Notes */}
           <div className="space-y-6">
 
-            {/* Materials & Tools Card */}
             <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 shadow-xl space-y-6">
-              
               <div>
                 <h3 className="flex items-center gap-2 font-extrabold text-white text-sm uppercase tracking-wider mb-3">
                   <Layers size={18} className="text-emerald-400" /> Your Materials
@@ -217,10 +268,8 @@ export default function PersonalizedGuide() {
                   ))}
                 </div>
               </div>
-
             </div>
 
-            {/* Safety & Precautions Card */}
             {guide.safety_notes && guide.safety_notes.length > 0 && (
               <div className="bg-amber-950/30 rounded-3xl border border-amber-500/20 p-6 shadow-xl">
                 <h3 className="flex items-center gap-2 font-extrabold text-amber-400 text-sm uppercase tracking-wider mb-3">
@@ -245,7 +294,6 @@ export default function PersonalizedGuide() {
             {/* STEP INSTRUCTIONS CARD */}
             <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 sm:p-8 shadow-xl space-y-6">
               
-              {/* Progress Bar */}
               <div>
                 <div className="flex items-center justify-between text-xs font-bold text-slate-400 mb-2">
                   <span>Step {currentStepIndex + 1} of {steps.length}</span>
@@ -259,14 +307,22 @@ export default function PersonalizedGuide() {
                 </div>
               </div>
 
-              {/* Step Content */}
               {!isComplete && currentStep ? (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center font-black text-base">
-                      {currentStep.step_number}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center font-black text-base">
+                        {currentStep.step_number}
+                      </div>
+                      <h2 className="font-black text-xl text-white">{currentStep.title}</h2>
                     </div>
-                    <h2 className="font-black text-xl text-white">{currentStep.title}</h2>
+
+                    <button
+                      onClick={() => handleSendMessage(`Explain step ${currentStepIndex + 1}`)}
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-400 border border-emerald-500/30 font-bold text-xs flex items-center gap-1.5 transition-colors"
+                    >
+                      <Lightbulb size={14} /> Explain with AI
+                    </button>
                   </div>
 
                   <p className="text-slate-300 text-sm leading-relaxed font-normal bg-slate-950 p-4 rounded-2xl border border-slate-800">
@@ -283,7 +339,6 @@ export default function PersonalizedGuide() {
                     </div>
                   )}
 
-                  {/* Navigation Controls */}
                   <div className="flex items-center justify-between pt-4 border-t border-slate-800">
                     <button
                       onClick={() => setCurrentStepIndex(prev => Math.max(0, prev - 1))}
@@ -308,7 +363,6 @@ export default function PersonalizedGuide() {
                   </div>
                 </div>
               ) : (
-                /* Celebration Complete Screen */
                 <div className="text-center py-8 space-y-4">
                   <div className="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/30">
                     <CheckCircle2 size={48} />
@@ -320,7 +374,6 @@ export default function PersonalizedGuide() {
                   <div className="flex justify-center gap-4 pt-2">
                     <Link
                       to="/"
-                      onClick={resetScan}
                       className="bg-emerald-500 text-slate-950 font-black px-6 py-3 rounded-2xl shadow-lg hover:bg-emerald-400 transition-colors text-sm"
                     >
                       Back to Dashboard
@@ -331,7 +384,7 @@ export default function PersonalizedGuide() {
 
             </div>
 
-            {/* AI ASSISTANT CHAT WINDOW */}
+            {/* AI ASSISTANT CHAT PANEL */}
             <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 shadow-xl space-y-4">
               
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -340,24 +393,32 @@ export default function PersonalizedGuide() {
                     <Bot size={20} />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-white text-sm">AI Project Assistant</h3>
-                    <p className="text-[10px] text-slate-400">Ask questions or request material substitutes</p>
+                    <h3 className="font-extrabold text-white text-sm">✨ Ask AI About Your Project</h3>
+                    <p className="text-[10px] text-slate-400">Context-aware assistant for modifications & step guidance</p>
                   </div>
                 </div>
 
-                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                  Online
-                </span>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={handleRestartProject}
+                    className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 bg-slate-800/60 px-2.5 py-1 rounded-lg"
+                  >
+                    Clear Chat
+                  </button>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                    Online
+                  </span>
+                </div>
               </div>
 
               {/* Chat Feed */}
               <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800 h-64 overflow-y-auto space-y-3">
                 {messages.length === 0 && (
-                  <div className="text-center py-8 text-xs text-slate-500 space-y-2">
+                  <div className="text-center py-6 text-xs text-slate-500 space-y-3">
                     <Bot size={28} className="mx-auto text-slate-600" />
-                    <p>Have questions about building this project?</p>
-                    <div className="flex flex-wrap justify-center gap-2 pt-2">
-                      {["I don't have cotton yarn", "What tool can replace scissors?", "How to make wicking faster?"].map((q, idx) => (
+                    <p>Have questions or need to modify this project?</p>
+                    <div className="flex flex-wrap justify-center gap-2 pt-1">
+                      {suggestions.map((q, idx) => (
                         <button
                           key={idx}
                           onClick={() => handleSendMessage(q)}
@@ -401,6 +462,19 @@ export default function PersonalizedGuide() {
                 <div ref={chatEndRef} />
               </div>
 
+              {/* Quick Action Chips */}
+              <div className="flex flex-wrap gap-1.5">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSendMessage(s)}
+                    className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/40 hover:bg-emerald-900/60 px-2.5 py-1 rounded-lg border border-emerald-500/20 transition-colors"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+
               {/* Chat Input Bar */}
               <div className="flex items-center gap-2">
                 <input
@@ -408,7 +482,7 @@ export default function PersonalizedGuide() {
                   value={inputMsg}
                   onChange={(e) => setInputMsg(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Ask a question about this project..."
+                  placeholder="Ask anything about this project..."
                   className="flex-1 bg-slate-950 text-xs text-white px-4 py-3 rounded-2xl border border-slate-800 focus:outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-500"
                 />
                 <button

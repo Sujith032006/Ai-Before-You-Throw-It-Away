@@ -5,13 +5,29 @@ from app.schemas.ai import (
     GeneralIdeasRequest, GeneralIdeasResponse,
     AssistantChatRequest, AssistantChatResponse
 )
+from app.schemas.project_chat import ProjectChatRequest, ProjectChatResponse
 from app.ai.llm_service import (
     generate_personalized_guide, chat_with_assistant, 
     generate_general_ideas, assistant_chat_service
 )
+from app.ai.project_chat_service import process_project_chat
 from app.services.persistence_service import save_selected_project_and_guide, save_chat_turn
 
 router = APIRouter(prefix="/api", tags=["Generative AI"])
+
+@router.post("/project-chat", response_model=ProjectChatResponse, status_code=status.HTTP_200_OK)
+async def handle_project_chat(request: ProjectChatRequest):
+    """
+    Stage 4 Context-Aware Reactive Project Chat API.
+    """
+    res = await process_project_chat(request)
+    if res.success and res.message:
+        save_chat_turn(
+            user_message=request.message,
+            assistant_response=res.message,
+            project_id=request.project_context.selected_project.title
+        )
+    return res
 
 @router.post("/projects/personalized-guide", response_model=PersonalizedGuideResponse, status_code=status.HTTP_200_OK)
 async def get_personalized_guide(request: PersonalizedGuideRequest):
