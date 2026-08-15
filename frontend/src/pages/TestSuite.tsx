@@ -99,7 +99,7 @@ export default function TestSuite() {
         {metrics && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 text-center space-y-1">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Accuracy</span>
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block leading-tight">Automated System Test Pass Rate</span>
               <p className="text-2xl font-black text-emerald-400">{metrics.accuracy}%</p>
             </div>
             <div className="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 text-center space-y-1">

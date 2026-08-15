@@ -163,8 +163,24 @@ export default function DetectionResult() {
           )}
         </div>
 
-        {/* POOR QUALITY WARNING CARD */}
-        {isPoorQuality ? (
+        {/* ANALYZER UNAVAILABLE CARD */}
+        {currentResult.status === 'analyzer_unavailable' ? (
+          <div className="relative z-10 text-left bg-rose-50 border border-rose-200 p-5 rounded-2xl mb-6 shadow-sm">
+            <h3 className="font-extrabold text-rose-900 text-base mb-2 flex items-center gap-2">
+              <AlertTriangle size={18} className="text-rose-600" />
+              ⚠️ AI Analyzer is Currently Unavailable
+            </h3>
+            <p className="text-xs text-rose-800 mb-3">
+              Please ensure local Ollama server is running on http://localhost:11434 with model llava.
+            </p>
+            <button
+              onClick={handleRetake}
+              className="w-full bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs py-2.5 rounded-xl transition-colors flex items-center justify-center gap-1.5"
+            >
+              <RefreshCw size={14} /> Retry Photo Scan
+            </button>
+          </div>
+        ) : isPoorQuality ? (
           <div className="relative z-10 text-left bg-amber-50 border border-amber-200 p-5 rounded-2xl mb-6 shadow-sm">
             <h3 className="font-extrabold text-amber-900 text-base mb-2 flex items-center gap-2">
               <AlertTriangle size={18} className="text-amber-600" />
